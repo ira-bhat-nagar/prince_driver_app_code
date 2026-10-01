@@ -5,3 +5,7 @@ build/
 .packages
 .pub-cache/
 
+
+# APK files (too large for GitHub)
+*.apk
+GoRush_APKs/
