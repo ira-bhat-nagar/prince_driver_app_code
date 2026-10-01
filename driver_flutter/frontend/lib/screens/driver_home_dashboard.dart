@@ -123,7 +123,8 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
           available = null;
         }
         if (!mounted) return;
-        // Show the ride alert sheet
+        // Play ring + show the ride alert sheet
+        NotificationService.instance.playRideRequestRing();
         _showIncomingRideSheet(available);
       });
     } else {
@@ -237,6 +238,7 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
                   Expanded(
                     child: OutlinedButton(
                       onPressed: () {
+                        NotificationService.instance.stopRideRing();
                         Navigator.pop(ctx);
                         AppToast.info(context, 'Ride declined.');
                       },
@@ -257,8 +259,8 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
                     flex: 2,
                     child: ElevatedButton(
                       onPressed: () {
+                        NotificationService.instance.stopRideRing();
                         Navigator.pop(ctx);
-                        // Navigate to incoming ride screen
                         if (widget.onIncomingRequestTap != null) {
                           widget.onIncomingRequestTap!();
                         }
@@ -772,7 +774,13 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
                                         children: [
                                           const SizedBox(height: 10),
                                           GestureDetector(
-                                            onTap: widget.onIncomingRequestTap,
+                                            onTap: () {
+                                              // INSTANT: Show bottom sheet directly — no navigation, no loading
+                                              NotificationService.instance.playRideRequestRing();
+                                              _showIncomingRideSheet(
+                                                RideService.instance.availableRide,
+                                              );
+                                            },
                                             child: Container(
                                               padding: const EdgeInsets.symmetric(
                                                   horizontal: 14, vertical: 10),

@@ -3,10 +3,6 @@ import 'package:flutter/foundation.dart';
 
 /// Lightweight notification service using the Android notification channel
 /// via a MethodChannel. No third-party plugin required.
-///
-/// For a richer experience (heads-up, persistent), this sends a notification
-/// through the platform channel. Requires POST_NOTIFICATIONS permission on
-/// Android 13+ (already handled in AndroidManifest via the existing setup).
 class NotificationService {
   static final NotificationService instance = NotificationService._internal();
   factory NotificationService() => instance;
@@ -28,12 +24,11 @@ class NotificationService {
             : 'You will not receive new ride requests while offline.',
         'channelId': 'gorush_driver_status',
         'channelName': 'Driver Status Alerts',
-        'importance': 4, // HIGH
+        'importance': 4,
       });
     } on PlatformException catch (e) {
       debugPrint('[NotificationService] showNotification error: $e');
     } on MissingPluginException {
-      // Platform channel not implemented (web/desktop) - silently skip
       debugPrint('[NotificationService] Platform channel not available — notification skipped.');
     }
   }
@@ -47,12 +42,31 @@ class NotificationService {
         'body': 'Pickup at Sector 62, Noida ➔ Drop at Connaught Place, New Delhi. Tap to accept.',
         'channelId': 'gorush_driver_status',
         'channelName': 'Driver Status Alerts',
-        'importance': 4, // HIGH
+        'importance': 4,
       });
     } on PlatformException catch (e) {
       debugPrint('[NotificationService] showNotification error: $e');
     } on MissingPluginException {
       debugPrint('[NotificationService] Platform channel not available — notification skipped.');
     }
+  }
+
+  /// 🔔 Play the best system ringtone + vibrate when a new ride request arrives.
+  /// Uses Android's built-in RingtoneManager — no extra package needed.
+  Future<void> playRideRequestRing() async {
+    try {
+      await _channel.invokeMethod('playRideRing');
+    } on PlatformException catch (e) {
+      debugPrint('[NotificationService] playRideRing error: $e');
+    } on MissingPluginException {
+      debugPrint('[NotificationService] playRideRing: channel not available.');
+    }
+  }
+
+  /// Stop the ride ring (call after accept/reject).
+  Future<void> stopRideRing() async {
+    try {
+      await _channel.invokeMethod('stopRideRing');
+    } catch (_) {}
   }
 }
