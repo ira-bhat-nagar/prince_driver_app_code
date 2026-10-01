@@ -3,10 +3,8 @@ package com.gorush.driver.gorush_driver
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
-import android.media.AudioAttributes
-import android.media.Ringtone
-import android.media.RingtoneManager
-import android.net.Uri
+import android.content.res.AssetFileDescriptor
+import android.media.MediaPlayer
 import android.os.*
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -16,7 +14,7 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.gorush.driver/notifications"
-    private var rideRingtone: Ringtone? = null
+    private var mediaPlayer: MediaPlayer? = null
     private var vibrator: Vibrator? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -49,19 +47,20 @@ class MainActivity : FlutterActivity() {
 
     private fun playRideRing() {
         try {
-            // Stop any existing ring first
-            rideRingtone?.stop()
+            // Stop any existing playback
+            stopRideRing()
 
-            // Use phone's default ringtone — best quality sound
-            val ringtoneUri: Uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-            rideRingtone = RingtoneManager.getRingtone(applicationContext, ringtoneUri)
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                rideRingtone?.isLooping = false
+            // Play custom GoRush ride request sound from Flutter assets
+            val afd: AssetFileDescriptor = assets.openFd("flutter_assets/assets/sounds/ride_request.mp3")
+            mediaPlayer = MediaPlayer().apply {
+                setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+                afd.close()
+                isLooping = false
+                prepare()
+                start()
             }
-            rideRingtone?.play()
 
-            // Vibrate pattern: wait 0ms, vibrate 400ms, pause 200ms, vibrate 400ms
+            // Vibration: 400ms ON, 200ms OFF, 400ms ON, 200ms OFF, 400ms ON
             vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
             val pattern = longArrayOf(0, 400, 200, 400, 200, 400)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -72,14 +71,17 @@ class MainActivity : FlutterActivity() {
                 vibrator?.vibrate(pattern, -1)
             }
         } catch (e: Exception) {
-            // Silently skip if ringtone not available
+            android.util.Log.e("GoRush", "playRideRing error: ${e.message}")
         }
     }
 
     private fun stopRideRing() {
-        rideRingtone?.stop()
-        rideRingtone = null
-        vibrator?.cancel()
+        try {
+            mediaPlayer?.stop()
+            mediaPlayer?.release()
+            mediaPlayer = null
+            vibrator?.cancel()
+        } catch (_: Exception) {}
     }
 
     private fun createNotificationChannel() {
