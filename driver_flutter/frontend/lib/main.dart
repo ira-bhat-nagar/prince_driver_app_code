@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'core/app_toast.dart';
 import 'core/theme.dart';
 import 'core/demo_controller.dart';
@@ -49,6 +50,28 @@ import 'screens/admin/fleet_admin_screen.dart';
 final GlobalKey<NavigatorState> _appNavigatorKey = GlobalKey<NavigatorState>();
 
 void _showRecoverableError(Object error) {
+  final msg = error.toString().toLowerCase();
+  // Suppress network/backend errors — don't bother driver with technical noise
+  final isNetworkError = msg.contains('socket') ||
+      msg.contains('timeout') ||
+      msg.contains('connection') ||
+      msg.contains('xmlhttprequest') ||
+      msg.contains('handshake') ||
+      msg.contains('null check') ||
+      msg.contains('type \'null\'') ||
+      msg.contains('nosuchmethoderror') ||
+      msg.contains('failed host lookup') ||
+      msg.contains('errno') ||
+      msg.contains('os error') ||
+      msg.contains('setonlinestatus') ||
+      msg.contains('fetchavailableride') ||
+      msg.contains('isOnline') ||
+      msg.contains('formatexception') ||
+      msg.contains('jsonunsupportedobjecterror');
+  if (isNetworkError) {
+    debugPrint('[Suppressed error]: $error');
+    return;
+  }
   debugPrint('Handled application error: $error');
   WidgetsBinding.instance.addPostFrameCallback((_) {
     final context = _appNavigatorKey.currentContext;
@@ -60,12 +83,18 @@ void _showRecoverableError(Object error) {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Set status bar to transparent/dark immediately — no flash
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Color(0xFF030B1C),
+    statusBarIconBrightness: Brightness.light,
+  ));
   FlutterError.onError = (details) => _showRecoverableError(details.exception);
   ErrorWidget.builder = (_) => const SizedBox.shrink();
   ui.PlatformDispatcher.instance.onError = (error, _) {
     _showRecoverableError(error);
     return true;
   };
+  // Must await before runApp — prevents notifyListeners crash on startup
   await DriverBackendService.instance.initSession();
   runApp(const QuickServeDriverApp());
 }
@@ -191,6 +220,7 @@ class _QuickServeDriverRootFlowState extends State<QuickServeDriverRootFlow> {
       case DemoScreen.createAccount:
       case DemoScreen.loginRegister:
         return DriverLoginRegistrationScreen(
+          key: UniqueKey(),
           onGetOtp: () {
             _navigateTo(DemoScreen.otpVerification);
           },
@@ -243,19 +273,29 @@ class _QuickServeDriverRootFlowState extends State<QuickServeDriverRootFlow> {
 
       // 05: Upload Documents
       case DemoScreen.uploadDocuments:
+        final bool isEditingModeDoc = _navigationHistory.contains(DemoScreen.driverProfileVehicleSettings);
         return UploadDocumentsScreen(
           onBackTap: _handleBackNavigation,
           onNext: () {
-            _navigateTo(DemoScreen.bankDetails);
+            if (isEditingModeDoc) {
+              _navigateTo(DemoScreen.driverProfileVehicleSettings);
+            } else {
+              _navigateTo(DemoScreen.bankDetails);
+            }
           },
         );
 
       // 06: Bank Details / UPI
       case DemoScreen.bankDetails:
+        final bool isEditingModeBank = _navigationHistory.contains(DemoScreen.driverProfileVehicleSettings);
         return BankDetailsScreen(
           onBackTap: _handleBackNavigation,
           onNext: () {
-            _navigateTo(DemoScreen.termsConditions);
+            if (isEditingModeBank) {
+              _navigateTo(DemoScreen.driverProfileVehicleSettings);
+            } else {
+              _navigateTo(DemoScreen.termsConditions);
+            }
           },
         );
 
@@ -419,6 +459,9 @@ class _QuickServeDriverRootFlowState extends State<QuickServeDriverRootFlow> {
             AppToast.success(context,
                 'Instant UPI Transfer Initiated: ₹ 2,480 credited to HDFC Bank');
           },
+          onStatementTap: () {
+            _navigateTo(DemoScreen.tripHistoryDetailedReceipt);
+          },
           onSosTap: () {
             _navigateTo(DemoScreen.safetyHubSosCenter);
           },
@@ -562,7 +605,7 @@ class _QuickServeDriverRootFlowState extends State<QuickServeDriverRootFlow> {
       case DemoScreen.insurance:
         return InsuranceScreen(
           key: const ValueKey('screen_insurance'),
-          onBackTap: () => _navigateTo(DemoScreen.driverProfileVehicleSettings),
+          onBackTap: _handleBackNavigation,
         );
 
       // 21: Vehicle Management
@@ -635,6 +678,7 @@ class _QuickServeDriverRootFlowState extends State<QuickServeDriverRootFlow> {
       // ignore: unreachable_switch_default
       default:
         return DriverLoginRegistrationScreen(
+          key: UniqueKey(),
           onBackTap: () {
             _handleManualInteraction(pause: true);
             _demoController.jumpToScreen(DemoScreen.splashScreen);

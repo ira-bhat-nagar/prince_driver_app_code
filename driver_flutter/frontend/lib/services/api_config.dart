@@ -78,8 +78,8 @@ class ApiConfig {
   static const String ridesEarningsEndpoint = '/api/rides/earnings';
 
   // Request timeouts
-  static const Duration requestTimeout = Duration(seconds: 30);
-  static const Duration healthCheckTimeout = Duration(seconds: 10);
+  static const Duration requestTimeout = Duration(seconds: 2);
+  static const Duration healthCheckTimeout = Duration(seconds: 2);
 
   /// Standard HTTP Headers
   static Map<String, String> getHeaders({String? token}) {

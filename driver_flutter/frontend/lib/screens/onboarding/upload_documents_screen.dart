@@ -227,12 +227,11 @@ class _UploadDocumentsScreenState extends State<UploadDocumentsScreen> {
   }
 
   void _handleSubmitDocuments() {
-    // Submission starts verification; it must not mark any document as
-    // uploaded/verified until a real document upload is completed.
     AppToast.success(
         context, 'Documents submitted for verification. Status: Pending.');
-    // Keep the driver on this screen after submission so they can review or
-    // upload any remaining documents. Bank Details is a separate profile item.
+    if (widget.onNext != null) {
+      widget.onNext!();
+    }
   }
 
   @override

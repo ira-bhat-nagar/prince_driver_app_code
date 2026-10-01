@@ -16,11 +16,7 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(milliseconds: 1500), () {
-      if (mounted && widget.onGetStarted != null) {
-        widget.onGetStarted!();
-      }
-    });
+    // Auto-navigation removed. Waiting for user to click 'Get Started'.
   }
 
   @override

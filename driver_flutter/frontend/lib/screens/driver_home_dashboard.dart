@@ -50,12 +50,15 @@ class DriverHomeDashboardScreen extends StatefulWidget {
 }
 
 class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
-  bool _isOnline = true;
+  // Static variable persists online state across widget rebuilds/navigation
+  static bool _persistedOnline = false;
+  bool _isOnline = false;
 
   @override
   void initState() {
     super.initState();
-    _isOnline = RideService.instance.isOnline;
+    // Use persisted static state — survives back navigation without backend roundtrip
+    _isOnline = _persistedOnline;
     TokenStorageService.instance.addListener(_onProfileChanged);
     RideService.instance.addListener(_onRideServiceChanged);
     WalletService.instance.addListener(_onWalletChanged);
@@ -86,11 +89,10 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
   }
 
   void _onRideServiceChanged() {
-    if (mounted) {
-      setState(() {
-        _isOnline = RideService.instance.isOnline;
-      });
-    }
+    // NOTE: Do NOT sync _isOnline from RideService here.
+    // The online/offline toggle is owned by the driver's tap, not backend state.
+    // Syncing from backend causes the button to flip offline when fetchAvailableRide() is called.
+    if (mounted) setState(() {}); // Only rebuild UI for ride data changes
   }
 
   void _onWalletChanged() {
@@ -98,35 +100,223 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
   }
 
   Future<void> _setOnlineStatus(bool online) async {
-    final updated = await RideService.instance.setOnlineStatus(online);
-    if (!mounted) return;
+    // Persist state statically so it survives navigation rebuilds
+    _persistedOnline = online;
+    setState(() => _isOnline = online);
+    NotificationService.instance.showOnlineStatusNotification(isOnline: online);
 
-    if (updated) {
-      // Fire a system heads-up notification for every online/offline toggle
-      await NotificationService.instance
-          .showOnlineStatusNotification(isOnline: online);
+    if (online) {
+      AppToast.success(context, 'You are Online! Looking for rides...');
 
-      if (online) {
-        AppToast.success(context, 'You are now Online. Looking for rides...');
-        final available = await RideService.instance.fetchAvailableRide();
-        
-        // Show demo system notification
-        await NotificationService.instance.showNewRideRequestNotification();
-        
-        if (available != null && mounted) {
-          AppToast.info(context, 'New ride request available. Tap the incoming alert!');
-        } else if (mounted) {
-          AppToast.info(context, 'New ride request available. Tap the incoming alert!');
+      // 2. Sync to backend (non-blocking)
+      RideService.instance.setOnlineStatus(true).catchError((_) {});
+
+      // 3. Show ride notification after brief delay (let UI settle first)
+      Future.delayed(const Duration(milliseconds: 600), () async {
+        if (!mounted) return;
+        // Try to get real ride from backend
+        dynamic available;
+        try {
+          available = await RideService.instance.fetchAvailableRide()
+              .timeout(const Duration(seconds: 5));
+        } catch (_) {
+          available = null;
         }
-      } else {
-        AppToast.info(context, 'You are now Offline.');
-      }
-      return;
+        if (!mounted) return;
+        // Show the ride alert sheet
+        _showIncomingRideSheet(available);
+      });
+    } else {
+      AppToast.info(context, 'You are now Offline.');
+      RideService.instance.setOnlineStatus(false).catchError((_) {});
     }
+  }
 
-    AppToast.error(
-      context,
-      'Status was not changed. Check your connection and try again.',
+  void _showIncomingRideSheet(dynamic ride) {
+    final passengerName = ride?.passengerName ?? 'Passenger';
+    final pickup = ride?.pickupAddress ?? 'Sector 62, Noida';
+    final drop = ride?.dropoffAddress ?? 'Connaught Place, Delhi';
+    final fare = ride?.estimatedFare ?? 320.0;
+    final distance = ride?.distanceKm ?? 14.2;
+
+    showModalBottomSheet(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        margin: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.18),
+              blurRadius: 24,
+              offset: const Offset(0, -4),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Handle
+            Container(
+              margin: const EdgeInsets.only(top: 10),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            // Header
+            Container(
+              margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E3A8A),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.directions_car, color: Colors.white, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'New Ride Request — $passengerName',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.green,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '₹${fare.toInt()}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Trip details
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  _rideDetailRow(Icons.circle, Colors.green, 'Pickup', pickup),
+                  const SizedBox(height: 8),
+                  _rideDetailRow(Icons.location_on, Colors.red, 'Drop', drop),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      _chipInfo('${distance.toStringAsFixed(1)} km', Icons.straighten),
+                      const SizedBox(width: 10),
+                      _chipInfo('~${(distance * 3).toInt()} min', Icons.timer_outlined),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            // Action buttons
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        AppToast.info(context, 'Ride declined.');
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red,
+                        side: const BorderSide(color: Colors.red),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text('REJECT',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        // Navigate to incoming ride screen
+                        if (widget.onIncomingRequestTap != null) {
+                          widget.onIncomingRequestTap!();
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF1E3A8A),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: const Text('ACCEPT RIDE',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    // Also push a system notification
+    NotificationService.instance.showNewRideRequestNotification();
+  }
+
+  Widget _rideDetailRow(IconData icon, Color color, String label, String value) {
+    return Row(
+      children: [
+        Icon(icon, color: color, size: 14),
+        const SizedBox(width: 8),
+        Text('$label: ', style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12)),
+        Expanded(
+          child: Text(value,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              overflow: TextOverflow.ellipsis),
+        ),
+      ],
+    );
+  }
+
+  Widget _chipInfo(String text, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3F4F6),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: const Color(0xFF6B7280)),
+          const SizedBox(width: 4),
+          Text(text, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+        ],
+      ),
     );
   }
 

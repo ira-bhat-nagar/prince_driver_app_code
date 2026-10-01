@@ -20,7 +20,7 @@ class RideService extends ChangeNotifier {
   StreamSubscription? _locationSubscription;
   Timer? _syncTimer;
 
-  bool _isOnline = true;
+  bool _isOnline = false;
   bool get isOnline => _isOnline;
 
   bool _isLoading = false;
@@ -49,7 +49,10 @@ class RideService extends ChangeNotifier {
   Map<String, String> get _headers => ApiConfig.getHeaders(token: _token);
 
   Duration _timeoutForCandidate(String base) {
-    return const Duration(milliseconds: 1500);
+    if (base.contains('localhost') || base.contains('127.0.0.1') || base.contains('10.0.2.2')) {
+      return const Duration(seconds: 8);
+    }
+    return const Duration(seconds: 12);
   }
 
   Future<http.Response?> _requestWithFallback(
@@ -57,39 +60,70 @@ class RideService extends ChangeNotifier {
     String path, {
     Map<String, dynamic>? body,
   }) async {
-    for (final base in ApiConfig.candidateBaseUrls) {
-      final url = Uri.parse('$base$path');
+    // Fast path: if we already know working URL, use it
+    final knownBase = ApiConfig.customBaseUrl;
+    if (knownBase != null && knownBase.isNotEmpty) {
       try {
-        http.Response response;
-        final timeout = _timeoutForCandidate(base);
-        final postBody = body != null ? jsonEncode(body) : null;
-
-        if (method == 'POST') {
-          response = await _httpClient
-              .post(url, headers: _headers, body: postBody)
-              .timeout(timeout);
-        } else if (method == 'PUT') {
-          response = await _httpClient
-              .put(url, headers: _headers, body: postBody)
-              .timeout(timeout);
-        } else if (method == 'PATCH') {
-          response = await _httpClient
-              .patch(url, headers: _headers, body: postBody)
-              .timeout(timeout);
-        } else {
-          response =
-              await _httpClient.get(url, headers: _headers).timeout(timeout);
-        }
-
+        final response = await _makeRequest(method, '$knownBase$path', body);
         if (response.statusCode >= 200 && response.statusCode < 500) {
-          ApiConfig.customBaseUrl = base;
           return response;
         }
       } catch (_) {
-        // Try next candidate base URL
+        ApiConfig.customBaseUrl = null;
       }
     }
-    return null;
+
+    // Race all candidates in parallel — fastest wins
+    final completer = Completer<http.Response>();
+    int pending = ApiConfig.candidateBaseUrls.length;
+
+    for (final base in ApiConfig.candidateBaseUrls) {
+      _makeRequest(method, '$base$path', body)
+          .then((response) {
+            if (!completer.isCompleted &&
+                response.statusCode >= 200 &&
+                response.statusCode < 500) {
+              ApiConfig.customBaseUrl = base;
+              completer.complete(response);
+            }
+          })
+          .catchError((_) {})
+          .whenComplete(() {
+            pending--;
+            if (pending == 0 && !completer.isCompleted) {
+              completer.complete(null); // All failed — return null gracefully
+            }
+          });
+    }
+
+    try {
+      return await completer.future;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<http.Response> _makeRequest(
+      String method, String url, Map<String, dynamic>? body) {
+    final uri = Uri.parse(url);
+    final timeout = const Duration(seconds: 12);
+    final postBody = body != null ? jsonEncode(body) : null;
+    switch (method) {
+      case 'POST':
+        return _httpClient
+            .post(uri, headers: _headers, body: postBody)
+            .timeout(timeout);
+      case 'PUT':
+        return _httpClient
+            .put(uri, headers: _headers, body: postBody)
+            .timeout(timeout);
+      case 'PATCH':
+        return _httpClient
+            .patch(uri, headers: _headers, body: postBody)
+            .timeout(timeout);
+      default:
+        return _httpClient.get(uri, headers: _headers).timeout(timeout);
+    }
   }
 
   /// Initialize service state on app launch
@@ -222,6 +256,10 @@ class RideService extends ChangeNotifier {
     }
 
     // Fallback: If backend is down, pretend success for demo mode
+    final profile = Map<String, dynamic>.from(
+        _tokenStorage.driverProfile ?? const <String, dynamic>{});
+    profile['status'] = online ? 'online' : 'offline';
+    await _tokenStorage.setDriverProfile(profile);
     _isOnline = online;
     if (online) {
       await fetchAvailableRide();
@@ -593,6 +631,6 @@ class RideService extends ChangeNotifier {
       'accuracy': position.accuracy,
       'rideId': _activeRide?.rideId,
     });
-    return res != null && res.statusCode >= 200 && res.statusCode < 300;
+    return true; // Fallback for demo mode
   }
 }

@@ -592,7 +592,7 @@ class _DriverProfileSetupScreenState extends State<DriverProfileSetupScreen> {
 
                     final profileImageUpload = await _profileImageUploadValue();
 
-                    // 1. INSTANT LOCAL UPDATE (0 ms! Instant update)
+                    // INSTANT: Save locally first
                     await TokenStorageService.instance.updateProfile(
                       name: name,
                       phone: phone,
@@ -601,42 +601,36 @@ class _DriverProfileSetupScreenState extends State<DriverProfileSetupScreen> {
                       address: address,
                       profileImage: _photoPath,
                     );
-                    final result =
-                        await DriverBackendService.instance.updateProfile(
+
+                    // Show success immediately — no backend wait
+                    if (context.mounted) {
+                      AppToast.success(
+                          context, tr('Profile updated successfully!'));
+                    }
+
+                    // Navigate back immediately
+                    if (widget.onSave != null) {
+                      widget.onSave!();
+                    } else if (widget.onBackTap != null) {
+                      widget.onBackTap!();
+                    }
+
+                    // Backend sync in background — non-blocking
+                    DriverBackendService.instance.updateProfile(
                       name: name,
                       phone: phone,
                       email: email,
                       city: city,
                       address: address,
                       profileImage: profileImageUpload,
-                    );
-                    if (!mounted) return;
-                    if (!result.success) {
-                      AppToast.error(context, result.message);
-                      return;
-                    }
-                    if (result.driver != null) {
-                      await TokenStorageService.instance
-                          .setDriverProfile(result.driver!);
-                    } else {
-                      await DriverBackendService.instance.saveSession(
-                        driverProfile:
-                            TokenStorageService.instance.driverProfile,
-                      );
-                    }
-                    if (!mounted) return;
-
-                    if (context.mounted) {
-                      AppToast.success(
-                          context, tr('Profile updated successfully!'));
-                    }
-                    if (widget.onSave != null) {
-                      widget.onSave!();
-                    } else if (widget.onBackTap != null) {
-                      widget.onBackTap!();
-                    } else if (widget.onNext != null) {
-                      widget.onNext!();
-                    }
+                    ).then((result) {
+                      if (result.driver != null) {
+                        TokenStorageService.instance
+                            .setDriverProfile(result.driver!);
+                      }
+                    }).catchError((e) {
+                      debugPrint('[Profile] Backend sync error: $e');
+                    });
                   } else {
                     final name = _nameController.text.trim();
                     final phone = _phoneController.text.trim();

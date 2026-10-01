@@ -67,19 +67,7 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
           _vehicles = saved.map((m) => VehicleData.fromMap(m)).toList();
         });
       }
-    }
-
-    try {
-      final remoteList = await DriverBackendService.instance.getVehicles();
-      if (remoteList.isNotEmpty && mounted) {
-        setState(() {
-          _vehicles = remoteList.map((m) => VehicleData.fromMap(m)).toList();
-        });
-        return;
-      }
-    } catch (_) {}
-
-    if (_vehicles.isEmpty) {
+    } else {
       final profile = TokenStorageService.instance.driverProfile;
       final dynamic rawVeh = profile?['vehicleId'] ?? profile?['vehicleNumber'];
       final regNum = (rawVeh != null && rawVeh.toString().trim().isNotEmpty)
@@ -101,6 +89,19 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
         });
       }
     }
+
+    _syncRemoteVehicles();
+  }
+
+  Future<void> _syncRemoteVehicles() async {
+    try {
+      final remoteList = await DriverBackendService.instance.getVehicles();
+      if (remoteList.isNotEmpty && mounted) {
+        setState(() {
+          _vehicles = remoteList.map((m) => VehicleData.fromMap(m)).toList();
+        });
+      }
+    } catch (_) {}
   }
 
   void _showAddVehicleModal() {
@@ -353,20 +354,7 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
                             return;
                           }
 
-                          // Persist via Node.js backend to MongoDB Atlas
-                          final res = await DriverBackendService.instance.addVehicle(
-                            model: newModel,
-                            regNumber: newReg,
-                            type: selectedType,
-                          );
-
-                          if (!res.isSuccess) {
-                            setModalState(() {
-                              errorMessage = res.message;
-                            });
-                            return;
-                          }
-
+                          // INSTANT: Add vehicle to UI immediately
                           final addedVehicle = VehicleData(
                             model: '$newModel ($selectedType)',
                             regNumber: '$newReg • White',
@@ -381,16 +369,28 @@ class _VehicleManagementScreenState extends State<VehicleManagementScreen> {
                             });
                           }
 
+                          // Save locally
                           await TokenStorageService.instance.saveVehicles(
                             _vehicles.map((v) => v.toMap()).toList(),
                           );
 
+                          // Close modal and show success instantly
                           if (modalCtx.mounted) {
                             Navigator.of(modalCtx).pop();
                           }
                           if (mounted) {
-                            AppToast.success(context, 'Secondary vehicle ($newModel) added and verified!');
+                            AppToast.success(context, 'Vehicle $newModel added successfully!');
                           }
+
+                          // Backend sync in background — non-blocking
+                          DriverBackendService.instance.addVehicle(
+                            model: newModel,
+                            regNumber: newReg,
+                            type: selectedType,
+                          ).catchError((e) {
+                            debugPrint('[Vehicle] Backend sync error: $e');
+                          });
+
                           widget.onAddVehicleTap?.call();
                         },
                         style: ElevatedButton.styleFrom(

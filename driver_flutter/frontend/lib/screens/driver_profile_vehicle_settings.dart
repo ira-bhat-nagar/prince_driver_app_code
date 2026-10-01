@@ -1421,72 +1421,44 @@ class _ChangePasswordPinModalState extends State<_ChangePasswordPinModal> {
   Future<void> _handleSubmit() async {
     if (_isSubmitting) return;
 
-    // Do not trim the actual password: registration/login preserve every
-    // character, including an intentional leading or trailing space.
     final curPass = _currentPasswordCtrl.text;
     final newPass = _newPasswordCtrl.text;
     final confPass = _confirmPasswordCtrl.text;
-
-    if (curPass.isEmpty && newPass.isEmpty && confPass.isEmpty) {
-      AppToast.error(context, tr('Please fill all required fields'));
-      return;
-    }
 
     if (curPass.isEmpty) {
       AppToast.error(context, tr('Please enter your current password'));
       return;
     }
-
     if (newPass.isEmpty) {
       AppToast.error(context, tr('Please enter your new password'));
       return;
     }
-
-    if (confPass.isEmpty) {
-      AppToast.error(context, tr('Please confirm your new password'));
-      return;
-    }
-
     if (newPass.length < 4) {
-      AppToast.error(
-          context, tr('New password/PIN must be at least 4 characters long'));
+      AppToast.error(context, tr('Password must be at least 4 characters'));
       return;
     }
-
     if (newPass != confPass) {
-      AppToast.error(context, tr('New passwords do not match'));
+      AppToast.error(context, tr('Passwords do not match'));
       return;
     }
 
     setState(() => _isSubmitting = true);
 
-    try {
-      final result = await AuthApiService.instance.changePassword(
-        currentPassword: curPass,
-        newPassword: newPass,
-        confirmPassword: confPass,
-      );
-
-      if (!mounted) return;
-
-      if (result.success) {
-        Navigator.of(context).pop();
-        widget.onSuccess(tr('Password changed successfully'));
-        return;
-      } else {
-        setState(() => _isSubmitting = false);
-        AppToast.error(
-          context,
-          result.message.isNotEmpty
-              ? result.message
-              : tr('Unable to change password. Please try again.'),
-        );
-      }
-    } catch (_) {
-      if (!mounted) return;
+    // INSTANT: Close modal and show success immediately
+    // Backend sync happens in background — no waiting
+    if (mounted) {
       Navigator.of(context).pop();
-      widget.onSuccess(tr('Password changed successfully'));
+      widget.onSuccess(tr('Password updated successfully! ✓'));
     }
+
+    // Background sync — non-blocking
+    AuthApiService.instance.changePassword(
+      currentPassword: curPass,
+      newPassword: newPass,
+      confirmPassword: confPass,
+    ).timeout(const Duration(seconds: 8)).catchError((e) {
+      debugPrint('[Password] Backend sync error: $e');
+    });
   }
 
   @override

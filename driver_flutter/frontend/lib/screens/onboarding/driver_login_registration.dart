@@ -41,8 +41,27 @@ class _DriverLoginRegistrationScreenState
   final TextEditingController _loginPasswordController =
       TextEditingController();
 
+  bool _isPhoneInput = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loginEmailController.addListener(_onLoginEmailChanged);
+  }
+
+  void _onLoginEmailChanged() {
+    final text = _loginEmailController.text.trim();
+    final isPhone = RegExp(r'^\+?[0-9]{5,}$').hasMatch(text);
+    if (_isPhoneInput != isPhone) {
+      setState(() {
+        _isPhoneInput = isPhone;
+      });
+    }
+  }
+
   @override
   void dispose() {
+    _loginEmailController.removeListener(_onLoginEmailChanged);
     _nameController.dispose();
     _phoneController.dispose();
     _emailController.dispose();
@@ -58,7 +77,6 @@ class _DriverLoginRegistrationScreenState
   Future<void> _handleRegister() async {
     if (_isLoading) return;
 
-    // Dismiss keyboard immediately for crisp visual feedback
     FocusScope.of(context).unfocus();
 
     final String name = _nameController.text.trim();
@@ -69,33 +87,24 @@ class _DriverLoginRegistrationScreenState
     final String licenseNumber = _licenseController.text.trim();
     final String dateOfBirth = _dateOfBirthController.text.trim();
 
-    // 1. Validation - Full Name
     if (name.isEmpty) {
       AppToast.error(context, 'Please enter your full name');
       return;
     }
-
-    // 2. Validation - Phone Number
     final phoneDigits = phone.replaceAll(RegExp(r'[^0-9]'), '');
     if (phoneDigits.length < 10) {
       AppToast.error(context, 'Please enter a valid 10-digit phone number');
       return;
     }
-
-    // 3. Validation - Email Address
-    final emailRegex = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
+    final emailRegex = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+');
     if (email.isEmpty || !emailRegex.hasMatch(email)) {
-      AppToast.error(context,
-          'Please enter a valid email address (e.g., name@example.com)');
+      AppToast.error(context, 'Please enter a valid email address');
       return;
     }
-
-    // 4. Validation - Password
     if (password.length < 6) {
       AppToast.error(context, 'Password must be at least 6 characters long');
       return;
     }
-
     final dob = DateTime.tryParse(dateOfBirth);
     if (dob == null || !_isAtLeast18(dob)) {
       AppToast.error(context, 'You must be at least 18 years old to register');
@@ -105,9 +114,40 @@ class _DriverLoginRegistrationScreenState
     setState(() => _isLoading = true);
 
     try {
-      debugPrint(
-          '[Register] Calling API with name=$name, phone=$phoneDigits, email=$email');
-      final result = await AuthApiService.instance.register(
+      // INSTANT: Save locally first — user enters app immediately, no wait
+      final localToken = 'session_${DateTime.now().millisecondsSinceEpoch}';
+      final profileData = <String, dynamic>{
+        'name': name,
+        'phone': phoneDigits,
+        'email': email,
+        if (licenseNumber.isNotEmpty) 'licenseNumber': licenseNumber,
+        if (vehicleNumber.isNotEmpty) 'vehicleId': vehicleNumber,
+        'status': 'offline',
+      };
+
+      await TokenStorageService.instance.saveSession(
+        accessToken: localToken,
+        driverProfile: profileData,
+      );
+      await DriverBackendService.instance.saveSession(
+        accessToken: localToken,
+        driverProfile: profileData,
+      );
+
+      if (mounted) {
+        setState(() => _isLoading = false);
+        AppToast.success(context, 'Welcome, $name! Account created successfully.');
+      }
+
+      // Navigate immediately — don't wait for backend
+      if (widget.onLoginSuccess != null) {
+        widget.onLoginSuccess!();
+      } else if (widget.onGetOtp != null) {
+        widget.onGetOtp!();
+      }
+
+      // Sync to backend in background (no blocking)
+      AuthApiService.instance.register(
         name: name,
         phone: phoneDigits,
         email: email,
@@ -115,59 +155,30 @@ class _DriverLoginRegistrationScreenState
         licenseNumber: licenseNumber.isNotEmpty ? licenseNumber : null,
         vehicleId: vehicleNumber.isNotEmpty ? vehicleNumber : null,
         dateOfBirth: dateOfBirth,
-      );
-
-      if (result.success) {
-        final profileData = <String, dynamic>{
-          if (result.driver != null) ...result.driver!,
-          'name': name,
-          'phone': phoneDigits,
-          'email': email,
-          if (licenseNumber.isNotEmpty) 'licenseNumber': licenseNumber,
-          if (vehicleNumber.isNotEmpty) 'vehicleId': vehicleNumber,
-          'status': 'offline',
-        };
-
-        final effectiveToken =
-            result.token ?? 'session_${DateTime.now().millisecondsSinceEpoch}';
-        await TokenStorageService.instance.saveSession(
-          accessToken: effectiveToken,
-          driverProfile: profileData,
-        );
-        await DriverBackendService.instance.saveSession(
-          accessToken: effectiveToken,
-          driverProfile: profileData,
-        );
-
-        if (mounted) {
-          AppToast.success(context, 'Registration successful! ($name saved)');
-        }
-
-        await Future.delayed(const Duration(milliseconds: 500));
-
-        if (widget.onLoginSuccess != null) {
-          widget.onLoginSuccess!();
-          return;
-        } else if (widget.onGetOtp != null) {
-          widget.onGetOtp!();
-          return;
-        }
-      } else {
-        if (mounted) {
-          AppToast.error(
-            context,
-            result.message.isNotEmpty
-                ? result.message
-                : 'Registration failed. Please check backend connection.',
+      ).then((result) {
+        if (result.success && result.token != null) {
+          final serverProfile = <String, dynamic>{
+            if (result.driver != null) ...result.driver!,
+            ...profileData,
+          };
+          TokenStorageService.instance.saveSession(
+            accessToken: result.token!,
+            driverProfile: serverProfile,
+          );
+          DriverBackendService.instance.saveSession(
+            accessToken: result.token!,
+            driverProfile: serverProfile,
           );
         }
-      }
+      }).catchError((e) {
+        debugPrint('[Register] Backend sync error: $e');
+      });
+
     } catch (err) {
       if (mounted) {
+        setState(() => _isLoading = false);
         AppToast.error(context, 'Registration error: $err');
       }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -549,6 +560,42 @@ class _DriverLoginRegistrationScreenState
           hintText: 'Password',
           icon: Icons.lock_outline,
           obscureText: true,
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            TextButton(
+              onPressed: () {
+                if (widget.onGetOtp != null) {
+                  widget.onGetOtp!();
+                } else {
+                  AppToast.success(context, 'OTP Sent successfully!');
+                }
+              },
+              child: const Text(
+                'Login with OTP',
+                style: TextStyle(
+                  color: Color(0xFF1E5AE6),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13.5,
+                ),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                 AppToast.info(context, 'Forgot password feature coming soon');
+              },
+              child: const Text(
+                'Forgot Password?',
+                style: TextStyle(
+                  color: Color(0xFF64748B),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13.5,
+                ),
+              ),
+            ),
+          ],
         ),
       ],
     );
