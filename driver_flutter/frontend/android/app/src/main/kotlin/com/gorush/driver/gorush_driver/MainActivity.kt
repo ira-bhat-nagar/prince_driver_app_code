@@ -3,7 +3,6 @@ package com.gorush.driver.gorush_driver
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
-import android.content.res.AssetFileDescriptor
 import android.media.MediaPlayer
 import android.os.*
 import androidx.core.app.NotificationCompat
@@ -47,25 +46,24 @@ class MainActivity : FlutterActivity() {
 
     private fun playRideRing() {
         try {
-            // Stop any existing playback
-            stopRideRing()
+            stopRideRing() // stop any previous
 
-            // Play custom GoRush ride request sound from Flutter assets
-            val afd: AssetFileDescriptor = assets.openFd("flutter_assets/assets/sounds/ride_request.mp3")
-            mediaPlayer = MediaPlayer().apply {
-                setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
-                afd.close()
-                isLooping = false
-                prepare()
-                start()
+            // Use res/raw/ride_request.mp3 — most reliable, always works
+            val resId = resources.getIdentifier("ride_request", "raw", packageName)
+            if (resId != 0) {
+                mediaPlayer = MediaPlayer.create(this, resId)
+                mediaPlayer?.isLooping = false
+                mediaPlayer?.start()
+                mediaPlayer?.setOnCompletionListener { stopRideRing() }
+            } else {
+                android.util.Log.e("GoRush", "ride_request.mp3 not found in res/raw/")
             }
 
-            // Vibration: 400ms ON, 200ms OFF, 400ms ON, 200ms OFF, 400ms ON
+            // Vibration pattern: 400ms ON, 200ms OFF, 400ms ON
             vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
             val pattern = longArrayOf(0, 400, 200, 400, 200, 400)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val effect = VibrationEffect.createWaveform(pattern, -1)
-                vibrator?.vibrate(effect)
+                vibrator?.vibrate(VibrationEffect.createWaveform(pattern, -1))
             } else {
                 @Suppress("DEPRECATION")
                 vibrator?.vibrate(pattern, -1)
@@ -77,7 +75,7 @@ class MainActivity : FlutterActivity() {
 
     private fun stopRideRing() {
         try {
-            mediaPlayer?.stop()
+            if (mediaPlayer?.isPlaying == true) mediaPlayer?.stop()
             mediaPlayer?.release()
             mediaPlayer = null
             vibrator?.cancel()
@@ -91,7 +89,7 @@ class MainActivity : FlutterActivity() {
                 "Driver Status Alerts",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Alerts when driver goes Online or Offline"
+                description = "GoRush Driver alerts"
                 enableVibration(true)
             }
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -106,11 +104,8 @@ class MainActivity : FlutterActivity() {
             .setContentText(body)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
-
         try {
             NotificationManagerCompat.from(this).notify(id, builder.build())
-        } catch (e: SecurityException) {
-            // POST_NOTIFICATIONS permission not granted — silently skip
-        }
+        } catch (_: SecurityException) {}
     }
 }

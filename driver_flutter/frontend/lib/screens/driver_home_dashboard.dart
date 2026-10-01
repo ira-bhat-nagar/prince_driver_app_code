@@ -937,28 +937,34 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
                                     ),
                                   ),
 
-                                  // 5. 4 Metrics Grid (2x2)
+                                  // 5. 4 Metrics Grid (2x2) — all clickable
                                   Column(
                                     children: [
                                       Row(
                                         children: [
                                           Expanded(
-                                            child: _buildMetricTile(
-                                              title: 'Total Rides',
-                                              value: '18',
-                                              icon: Icons.local_taxi_outlined,
-                                              iconColor:
-                                                  const Color(0xFF2563EB),
+                                            child: GestureDetector(
+                                              onTap: widget.onTripsTap,
+                                              child: _buildMetricTile(
+                                                title: 'Total Rides',
+                                                value: '18',
+                                                icon: Icons.local_taxi_outlined,
+                                                iconColor:
+                                                    const Color(0xFF2563EB),
+                                              ),
                                             ),
                                           ),
                                           const SizedBox(width: 10),
                                           Expanded(
-                                            child: _buildMetricTile(
-                                              title: 'Online Time',
-                                              value: '6h 24m',
-                                              icon: Icons.access_time_rounded,
-                                              iconColor:
-                                                  const Color(0xFF10B981),
+                                            child: GestureDetector(
+                                              onTap: widget.onEarningsTap,
+                                              child: _buildMetricTile(
+                                                title: 'Online Time',
+                                                value: '6h 24m',
+                                                icon: Icons.access_time_rounded,
+                                                iconColor:
+                                                    const Color(0xFF10B981),
+                                              ),
                                             ),
                                           ),
                                         ],
@@ -967,23 +973,29 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
                                       Row(
                                         children: [
                                           Expanded(
-                                            child: _buildMetricTile(
-                                              title: 'Avg. Rating',
-                                              value: '4.8 ★',
-                                              icon: Icons.star_outline_rounded,
-                                              iconColor:
-                                                  const Color(0xFFF59E0B),
+                                            child: GestureDetector(
+                                              onTap: widget.onEarningsTap,
+                                              child: _buildMetricTile(
+                                                title: 'Avg. Rating',
+                                                value: '4.8 ★',
+                                                icon: Icons.star_outline_rounded,
+                                                iconColor:
+                                                    const Color(0xFFF59E0B),
+                                              ),
                                             ),
                                           ),
                                           const SizedBox(width: 10),
                                           Expanded(
-                                            child: _buildMetricTile(
-                                              title: 'Total Earnings',
-                                              value: '₹23,600',
-                                              icon: Icons
-                                                  .account_balance_wallet_outlined,
-                                              iconColor:
-                                                  const Color(0xFF6366F1),
+                                            child: GestureDetector(
+                                              onTap: widget.onWalletTap,
+                                              child: _buildMetricTile(
+                                                title: 'Total Earnings',
+                                                value: '₹23,600',
+                                                icon: Icons
+                                                    .account_balance_wallet_outlined,
+                                                iconColor:
+                                                    const Color(0xFF6366F1),
+                                              ),
                                             ),
                                           ),
                                         ],

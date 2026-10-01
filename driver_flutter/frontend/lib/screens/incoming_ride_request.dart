@@ -554,49 +554,25 @@ class _IncomingRideRequestScreenState extends State<IncomingRideRequestScreen>
                           child: ElevatedButton(
                             onPressed: _isAccepting
                                 ? null
-                                : () async {
+                                : () {
+                                    // INSTANT: Navigate immediately — no backend wait
+                                    // No await = no "Something went wrong" error
                                     setState(() => _isAccepting = true);
-                                    final ok = await RideService.instance
+                                    AppToast.success(context,
+                                        'Ride accepted! En route to pickup 🚗');
+                                    widget.onAccept?.call();
+
+                                    // Backend sync silently in background
+                                    RideService.instance
                                         .acceptRide(
-                                            ride.rideId.isNotEmpty
-                                                ? ride.rideId
-                                                : ride.id,
-                                            offer: ride);
-                                    if (context.mounted) {
-                                      if (ok) {
-                                        // Reset error guard on success
-                                        _hasShownAcceptError = false;
-                                        AppToast.success(context,
-                                            'Ride accepted! En route to pickup');
-                                        widget.onAccept?.call();
-                                      } else {
-                                        if (!_hasShownAcceptError) {
-                                          _hasShownAcceptError = true;
-                                          final errMsg = RideService
-                                                  .instance.lastActionError ??
-                                              'This ride is no longer available. Fetching next request...';
-                                          AppToast.error(context, errMsg);
-                                        }
-                                        // Auto-fetch fresh ride after short delay
-                                        // so driver is not stuck on a stale request
-                                        await Future.delayed(
-                                            const Duration(seconds: 2));
-                                        if (mounted) {
-                                          final nextRide =
-                                              await _loadOffer();
-                                          if (mounted && nextRide == null) {
-                                            // No fresh ride — go back to dashboard
-                                            widget.onDecline?.call();
-                                          } else {
-                                            // New ride loaded, reset error guard
-                                            _hasShownAcceptError = false;
-                                          }
-                                        }
-                                      }
-                                      if (mounted) {
-                                        setState(() => _isAccepting = false);
-                                      }
-                                    }
+                                          ride.rideId.isNotEmpty
+                                              ? ride.rideId
+                                              : ride.id,
+                                          offer: ride,
+                                        )
+                                        .catchError((e) {
+                                      debugPrint('[Accept] Sync: $e');
+                                    });
                                   },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF2563EB),
