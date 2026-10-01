@@ -564,64 +564,6 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
                                                               ],
                                                             ),
                                                           ),
-                                                          if (widget
-                                                                  .onLogoutTap !=
-                                                              null)
-                                                            GestureDetector(
-                                                              onTap: widget
-                                                                  .onLogoutTap,
-                                                              child: Container(
-                                                                padding: const EdgeInsets
-                                                                    .symmetric(
-                                                                    horizontal:
-                                                                        7,
-                                                                    vertical:
-                                                                        2),
-                                                                decoration:
-                                                                    BoxDecoration(
-                                                                  color: const Color(
-                                                                      0xFFEFF6FF),
-                                                                  borderRadius:
-                                                                      BorderRadius
-                                                                          .circular(
-                                                                              10),
-                                                                  border: Border.all(
-                                                                      color: const Color(
-                                                                          0xFF3B82F6),
-                                                                      width:
-                                                                          0.8),
-                                                                ),
-                                                                child: Row(
-                                                                  mainAxisSize:
-                                                                      MainAxisSize
-                                                                          .min,
-                                                                  children: const [
-                                                                    Icon(
-                                                                        Icons
-                                                                            .person_add_alt_1_outlined,
-                                                                        color: Color(
-                                                                            0xFF2563EB),
-                                                                        size:
-                                                                            11),
-                                                                    SizedBox(
-                                                                        width:
-                                                                            3),
-                                                                    Text(
-                                                                      'Register / Switch',
-                                                                      style:
-                                                                          TextStyle(
-                                                                        color: Color(
-                                                                            0xFF2563EB),
-                                                                        fontSize:
-                                                                            10,
-                                                                        fontWeight:
-                                                                            FontWeight.bold,
-                                                                      ),
-                                                                    ),
-                                                                  ],
-                                                                ),
-                                                              ),
-                                                            ),
                                                         ],
                                                       ),
                                                     ],
