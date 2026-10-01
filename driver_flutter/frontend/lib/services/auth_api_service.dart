@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show SocketException;
 import 'package:flutter/foundation.dart';
@@ -73,7 +73,7 @@ class AuthApiService {
   }
 
   Duration _timeoutForCandidate(String base) {
-    // Physical device → backend via LAN/Atlas needs more time.
+    // Physical device â†’ backend via LAN/Atlas needs more time.
     // 12s is safe even on a slow connection and avoids silent fallback to mock data.
     if (base.contains('localhost') || base.contains('127.0.0.1') || base.contains('10.0.2.2')) {
       return const Duration(seconds: 8);
@@ -81,8 +81,8 @@ class AuthApiService {
     return const Duration(seconds: 12);
   }
 
-  /// Send POST request — races ALL candidate URLs in parallel. First valid JSON
-  /// response wins. This cuts wait time from (N × timeout) to just one RTT.
+  /// Send POST request â€” races ALL candidate URLs in parallel. First valid JSON
+  /// response wins. This cuts wait time from (N Ã— timeout) to just one RTT.
   Future<http.Response> _postWithFallback(
     String endpoint,
     Map<String, dynamic> payload, {
@@ -107,7 +107,7 @@ class AuthApiService {
       }
     }
 
-    // Race all candidates in parallel — fastest valid response wins
+    // Race all candidates in parallel â€” fastest valid response wins
     final completer = Completer<http.Response>();
     int pending = ApiConfig.candidateBaseUrls.length;
     Object? lastError;
@@ -142,7 +142,7 @@ class AuthApiService {
     return completer.future;
   }
 
-  /// Send GET request — races ALL candidates in parallel.
+  /// Send GET request â€” races ALL candidates in parallel.
   Future<http.Response> _getWithFallback(
     String endpoint, {
     String? token,
@@ -195,7 +195,7 @@ class AuthApiService {
     return completer.future;
   }
 
-  /// Send PUT request — races ALL candidates in parallel.
+  /// Send PUT request â€” races ALL candidates in parallel.
   Future<http.Response> _putWithFallback(
     String endpoint,
     Map<String, dynamic> payload, {
@@ -760,4 +760,14 @@ class AuthApiService {
     final local = await _tokenStorage.getVehicles();
     return local ?? [];
   }
+
+  /// Send OTP to phone number for registration.
+  Future<void> sendOtp({required String phone}) async {
+    try {
+      await _postWithFallback('/auth/send-otp', {'phone': phone});
+    } catch (e) {
+      debugPrint('[AuthApi] sendOtp error: $e');
+    }
+  }
 }
+

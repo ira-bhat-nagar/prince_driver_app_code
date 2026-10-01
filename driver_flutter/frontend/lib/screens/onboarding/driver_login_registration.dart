@@ -76,110 +76,46 @@ class _DriverLoginRegistrationScreenState
 
   Future<void> _handleRegister() async {
     if (_isLoading) return;
-
     FocusScope.of(context).unfocus();
 
-    final String name = _nameController.text.trim();
-    final String phone = _phoneController.text.trim();
-    final String email = _emailController.text.trim();
-    final String password = _passwordController.text;
-    final String vehicleNumber = _vehicleController.text.trim();
-    final String licenseNumber = _licenseController.text.trim();
-    final String dateOfBirth = _dateOfBirthController.text.trim();
-
-    if (name.isEmpty) {
-      AppToast.error(context, 'Please enter your full name');
-      return;
-    }
+    // Only validate phone number — no name/email/password needed
+    final phone = _phoneController.text.trim();
     final phoneDigits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+
     if (phoneDigits.length < 10) {
-      AppToast.error(context, 'Please enter a valid 10-digit phone number');
-      return;
-    }
-    final emailRegex = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+');
-    if (email.isEmpty || !emailRegex.hasMatch(email)) {
-      AppToast.error(context, 'Please enter a valid email address');
-      return;
-    }
-    if (password.length < 6) {
-      AppToast.error(context, 'Password must be at least 6 characters long');
-      return;
-    }
-    final dob = DateTime.tryParse(dateOfBirth);
-    if (dob == null || !_isAtLeast18(dob)) {
-      AppToast.error(context, 'You must be at least 18 years old to register');
+      AppToast.error(context, 'Please enter a valid 10-digit mobile number');
       return;
     }
 
     setState(() => _isLoading = true);
 
-    try {
-      // INSTANT: Save locally first — user enters app immediately, no wait
-      final localToken = 'session_${DateTime.now().millisecondsSinceEpoch}';
-      final profileData = <String, dynamic>{
-        'name': name,
-        'phone': phoneDigits,
-        'email': email,
-        if (licenseNumber.isNotEmpty) 'licenseNumber': licenseNumber,
-        if (vehicleNumber.isNotEmpty) 'vehicleId': vehicleNumber,
-        'status': 'offline',
-      };
+    // Save phone locally and navigate to OTP screen instantly
+    final localToken = 'session_${DateTime.now().millisecondsSinceEpoch}';
+    final profileData = <String, dynamic>{
+      'phone': phoneDigits,
+      'status': 'offline',
+    };
 
-      await TokenStorageService.instance.saveSession(
-        accessToken: localToken,
-        driverProfile: profileData,
-      );
-      await DriverBackendService.instance.saveSession(
-        accessToken: localToken,
-        driverProfile: profileData,
-      );
+    await TokenStorageService.instance.saveSession(
+      accessToken: localToken,
+      driverProfile: profileData,
+    );
 
-      if (mounted) {
-        setState(() => _isLoading = false);
-        AppToast.success(context, 'Welcome, $name! Account created successfully.');
-      }
-
-      // Navigate immediately — don't wait for backend
-      if (widget.onLoginSuccess != null) {
-        widget.onLoginSuccess!();
-      } else if (widget.onGetOtp != null) {
-        widget.onGetOtp!();
-      }
-
-      // Sync to backend in background (no blocking)
-      AuthApiService.instance.register(
-        name: name,
-        phone: phoneDigits,
-        email: email,
-        password: password,
-        licenseNumber: licenseNumber.isNotEmpty ? licenseNumber : null,
-        vehicleId: vehicleNumber.isNotEmpty ? vehicleNumber : null,
-        dateOfBirth: dateOfBirth,
-      ).then((result) {
-        if (result.success && result.token != null) {
-          final serverProfile = <String, dynamic>{
-            if (result.driver != null) ...result.driver!,
-            ...profileData,
-          };
-          TokenStorageService.instance.saveSession(
-            accessToken: result.token!,
-            driverProfile: serverProfile,
-          );
-          DriverBackendService.instance.saveSession(
-            accessToken: result.token!,
-            driverProfile: serverProfile,
-          );
-        }
-      }).catchError((e) {
-        debugPrint('[Register] Backend sync error: $e');
-      });
-
-    } catch (err) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        AppToast.error(context, 'Registration error: $err');
-      }
+    if (mounted) {
+      setState(() => _isLoading = false);
     }
+
+    // Navigate to OTP screen immediately
+    if (widget.onGetOtp != null) {
+      widget.onGetOtp!();
+    } else if (widget.onLoginSuccess != null) {
+      widget.onLoginSuccess!();
+    }
+
+    // Send OTP in background (silent)
+    AuthApiService.instance
+        .sendOtp(phone: phoneDigits)
+        .catchError((e) => debugPrint('[OTP] Send error: $e'));
   }
 
   Future<void> _handleLogin() async {
