@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/theme.dart';
 import '../../core/app_toast.dart';
+import 'driver_login_registration.dart'; // for OtpSession
 
 class OtpVerificationLivenessScreen extends StatefulWidget {
   final VoidCallback? onVerifySuccess;
@@ -35,7 +36,14 @@ class _OtpVerificationLivenessScreenState
   void initState() {
     super.initState();
     _startResendTimer();
-    _startClipboardWatcher(); // auto-detect OTP from SMS clipboard
+    // Auto-fill OTP generated on registration screen
+    if (OtpSession.generatedOtp.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _fillOtp(OtpSession.generatedOtp);
+      });
+    } else {
+      _startClipboardWatcher();
+    }
   }
 
   @override

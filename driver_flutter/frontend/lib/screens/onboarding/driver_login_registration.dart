@@ -1,8 +1,22 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../core/app_toast.dart';
 import '../../services/auth_api_service.dart';
 import '../../services/token_storage_service.dart';
 import '../../services/driver_backend_service.dart';
+
+// Global OTP session — shared between registration and OTP screens
+class OtpSession {
+  static String generatedOtp = '';
+  static String phoneNumber = '';
+
+  static String generate() {
+    final rng = Random();
+    generatedOtp = List.generate(6, (_) => rng.nextInt(10)).join();
+    return generatedOtp;
+  }
+}
 
 class DriverLoginRegistrationScreen extends StatefulWidget {
   final VoidCallback? onGetOtp;
@@ -78,7 +92,6 @@ class _DriverLoginRegistrationScreenState
     if (_isLoading) return;
     FocusScope.of(context).unfocus();
 
-    // Only validate phone number — no name/email/password needed
     final phone = _phoneController.text.trim();
     final phoneDigits = phone.replaceAll(RegExp(r'[^0-9]'), '');
 
@@ -89,33 +102,112 @@ class _DriverLoginRegistrationScreenState
 
     setState(() => _isLoading = true);
 
-    // Save phone locally and navigate to OTP screen instantly
-    final localToken = 'session_${DateTime.now().millisecondsSinceEpoch}';
-    final profileData = <String, dynamic>{
-      'phone': phoneDigits,
-      'status': 'offline',
-    };
+    // Generate OTP locally (works without SMS gateway)
+    final otp = OtpSession.generate();
+    OtpSession.phoneNumber = phoneDigits;
 
+    // Save phone locally
+    final localToken = 'session_${DateTime.now().millisecondsSinceEpoch}';
     await TokenStorageService.instance.saveSession(
       accessToken: localToken,
-      driverProfile: profileData,
+      driverProfile: {'phone': phoneDigits, 'status': 'offline'},
     );
 
+    if (mounted) setState(() => _isLoading = false);
+
+    // Show OTP in a prominent dialog so user can see it
+    if (context.mounted) {
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Row(
+            children: [
+              Icon(Icons.sms_outlined, color: Color(0xFF1E5AE6)),
+              SizedBox(width: 8),
+              Text('OTP Sent!', style: TextStyle(fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'OTP for +91 $phoneDigits',
+                style: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              // Big OTP display
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFF1E5AE6).withOpacity(0.4)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      otp,
+                      style: const TextStyle(
+                        fontSize: 34,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1E3A8A),
+                        letterSpacing: 8,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.copy, color: Color(0xFF1E5AE6)),
+                      onPressed: () {
+                        Clipboard.setData(ClipboardData(text: otp));
+                        AppToast.success(ctx, 'OTP copied!');
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'This OTP will be auto-filled on the next screen.',
+                style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+          actions: [
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1E5AE6),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                ),
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Proceed to Verify',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Navigate to OTP screen
     if (mounted) {
-      setState(() => _isLoading = false);
+      if (widget.onGetOtp != null) {
+        widget.onGetOtp!();
+      } else if (widget.onLoginSuccess != null) {
+        widget.onLoginSuccess!();
+      }
     }
 
-    // Navigate to OTP screen immediately
-    if (widget.onGetOtp != null) {
-      widget.onGetOtp!();
-    } else if (widget.onLoginSuccess != null) {
-      widget.onLoginSuccess!();
-    }
-
-    // Send OTP in background (silent)
+    // Try backend OTP in background — silent
     AuthApiService.instance
         .sendOtp(phone: phoneDigits)
-        .catchError((e) => debugPrint('[OTP] Send error: $e'));
+        .catchError((e) => debugPrint('[OTP] Send: $e'));
   }
 
   Future<void> _handleLogin() async {
