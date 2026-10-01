@@ -315,7 +315,7 @@ class _DriverLoginRegistrationScreenState
               // Driver App Subtitle
               const Center(
                 child: Text(
-                  'Driver App',
+                  'Captain App',
                   style: TextStyle(
                     color: Color(0xFF1E5AE6),
                     fontSize: 13,
@@ -399,7 +399,7 @@ class _DriverLoginRegistrationScreenState
                             ),
                           )
                         : Text(
-                            _isRegisterMode ? 'Register' : 'Login',
+                            _isRegisterMode ? 'Get OTP' : 'Login',
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -467,46 +467,23 @@ class _DriverLoginRegistrationScreenState
 
   Widget _buildRegisterFields() {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _buildInputField(
-          controller: _nameController,
-          hintText: 'Full Name',
-          icon: Icons.person_outline,
-        ),
-        const SizedBox(height: 10),
-        _buildDateOfBirthField(),
-        const SizedBox(height: 10),
+        // Phone Number — only field needed for OTP registration
         _buildInputField(
           controller: _phoneController,
-          hintText: 'Phone Number',
-          icon: Icons.phone_outlined,
+          hintText: 'Enter Mobile Number',
+          icon: Icons.phone_android_outlined,
           keyboardType: TextInputType.phone,
         ),
-        const SizedBox(height: 10),
-        _buildInputField(
-          controller: _emailController,
-          hintText: 'Email Address',
-          icon: Icons.email_outlined,
-          keyboardType: TextInputType.emailAddress,
-        ),
-        const SizedBox(height: 10),
-        _buildInputField(
-          controller: _passwordController,
-          hintText: 'Password',
-          icon: Icons.lock_outline,
-          obscureText: true,
-        ),
-        const SizedBox(height: 10),
-        _buildInputField(
-          controller: _vehicleController,
-          hintText: 'Vehicle Number',
-          icon: Icons.directions_car_outlined,
-        ),
-        const SizedBox(height: 10),
-        _buildInputField(
-          controller: _licenseController,
-          hintText: 'License Number',
-          icon: Icons.badge_outlined,
+        const SizedBox(height: 6),
+        Text(
+          'We\'ll send an OTP to verify your number',
+          style: TextStyle(
+            color: Colors.grey.shade500,
+            fontSize: 12,
+          ),
+          textAlign: TextAlign.center,
         ),
       ],
     );

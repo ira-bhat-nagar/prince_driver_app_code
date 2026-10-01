@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../core/theme.dart';
 import '../core/app_toast.dart';
@@ -145,147 +146,197 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
       isDismissible: false,
       enableDrag: false,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        margin: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.18),
-              blurRadius: 24,
-              offset: const Offset(0, -4),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Handle
-            Container(
-              margin: const EdgeInsets.only(top: 10),
-              width: 40,
-              height: 4,
+      builder: (ctx) {
+        int secondsLeft = 30;
+        Timer? _countdownTimer;
+
+        return StatefulBuilder(
+          builder: (sheetCtx, setSheetState) {
+            // Start timer on first build
+            _countdownTimer ??= Timer.periodic(const Duration(seconds: 1), (t) {
+              if (!sheetCtx.mounted) { t.cancel(); return; }
+              setSheetState(() => secondsLeft--);
+              if (secondsLeft <= 0) {
+                t.cancel();
+                NotificationService.instance.stopRideRing();
+                if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+              }
+            });
+
+            // Countdown color: green→orange→red
+            final timerColor = secondsLeft > 20
+                ? const Color(0xFF10B981)
+                : secondsLeft > 10
+                    ? const Color(0xFFF59E0B)
+                    : Colors.red;
+
+            return Container(
+              margin: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            // Header
-            Container(
-              margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E3A8A),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.directions_car, color: Colors.white, size: 20),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'New Ride Request — $passengerName',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                      ),
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.green,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      '₹${fare.toInt()}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                    ),
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.18),
+                    blurRadius: 24,
+                    offset: const Offset(0, -4),
                   ),
                 ],
               ),
-            ),
-            // Trip details
-            Padding(
-              padding: const EdgeInsets.all(16),
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  _rideDetailRow(Icons.circle, Colors.green, 'Pickup', pickup),
-                  const SizedBox(height: 8),
-                  _rideDetailRow(Icons.location_on, Colors.red, 'Drop', drop),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      _chipInfo('${distance.toStringAsFixed(1)} km', Icons.straighten),
-                      const SizedBox(width: 10),
-                      _chipInfo('~${(distance * 3).toInt()} min', Icons.timer_outlined),
-                    ],
+                  // Handle bar
+                  Container(
+                    margin: const EdgeInsets.only(top: 10),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  // Header with passenger + fare + TIMER
+                  Container(
+                    margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1E3A8A),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.directions_car, color: Colors.white, size: 20),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'New Ride — $passengerName',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                        // Fare chip
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.green,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '₹${fare.toInt()}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        // 30-second countdown timer circle
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: timerColor.withOpacity(0.15),
+                            border: Border.all(color: timerColor, width: 2.5),
+                          ),
+                          child: Center(
+                            child: Text(
+                              '$secondsLeft',
+                              style: TextStyle(
+                                color: timerColor,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Trip details
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        _rideDetailRow(Icons.circle, Colors.green, 'Pickup', pickup),
+                        const SizedBox(height: 8),
+                        _rideDetailRow(Icons.location_on, Colors.red, 'Drop', drop),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            _chipInfo('${distance.toStringAsFixed(1)} km', Icons.straighten),
+                            const SizedBox(width: 10),
+                            _chipInfo('~${(distance * 3).toInt()} min', Icons.timer_outlined),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Action buttons
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () {
+                              _countdownTimer?.cancel();
+                              NotificationService.instance.stopRideRing();
+                              Navigator.pop(ctx);
+                              AppToast.info(context, 'Ride declined.');
+                            },
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.red,
+                              side: const BorderSide(color: Colors.red),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: const Text('REJECT',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          flex: 2,
+                          child: ElevatedButton(
+                            onPressed: () {
+                              _countdownTimer?.cancel();
+                              NotificationService.instance.stopRideRing();
+                              Navigator.pop(ctx);
+                              if (widget.onIncomingRequestTap != null) {
+                                widget.onIncomingRequestTap!();
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF1E3A8A),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              elevation: 0,
+                            ),
+                            child: const Text('ACCEPT RIDE',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
-            ),
-            // Action buttons
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () {
-                        NotificationService.instance.stopRideRing();
-                        Navigator.pop(ctx);
-                        AppToast.info(context, 'Ride declined.');
-                      },
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.red,
-                        side: const BorderSide(color: Colors.red),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text('REJECT',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        NotificationService.instance.stopRideRing();
-                        Navigator.pop(ctx);
-                        if (widget.onIncomingRequestTap != null) {
-                          widget.onIncomingRequestTap!();
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF1E3A8A),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        elevation: 0,
-                      ),
-                      child: const Text('ACCEPT RIDE',
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+            );
+          },
+        );
+      },
     );
-    // Also push a system notification
     NotificationService.instance.showNewRideRequestNotification();
   }
 

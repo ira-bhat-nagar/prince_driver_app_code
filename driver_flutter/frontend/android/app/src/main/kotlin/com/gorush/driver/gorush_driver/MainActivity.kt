@@ -48,18 +48,21 @@ class MainActivity : FlutterActivity() {
         try {
             stopRideRing() // stop any previous
 
-            // Use res/raw/ride_request.mp3 — most reliable, always works
+            // Use res/raw/ride_request.mp3 — most reliable
             val resId = resources.getIdentifier("ride_request", "raw", packageName)
             if (resId != 0) {
                 mediaPlayer = MediaPlayer.create(this, resId)
-                mediaPlayer?.isLooping = false
+                mediaPlayer?.isLooping = true   // loop so it plays for full 30 seconds
                 mediaPlayer?.start()
-                mediaPlayer?.setOnCompletionListener { stopRideRing() }
+                // Auto-stop after exactly 30 seconds to match the Flutter countdown timer
+                Handler(mainLooper).postDelayed({
+                    stopRideRing()
+                }, 30_000L)
             } else {
                 android.util.Log.e("GoRush", "ride_request.mp3 not found in res/raw/")
             }
 
-            // Vibration pattern: 400ms ON, 200ms OFF, 400ms ON
+            // Vibration pattern: 400ms ON, 200ms OFF — repeat for 30s
             vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
             val pattern = longArrayOf(0, 400, 200, 400, 200, 400)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
