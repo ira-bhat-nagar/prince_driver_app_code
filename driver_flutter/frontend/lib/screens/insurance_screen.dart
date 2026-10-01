@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import '../core/app_toast.dart';
 import '../core/theme.dart';
 import '../models/insurance_models.dart';
@@ -831,13 +831,14 @@ class _InsuranceScreenState extends State<InsuranceScreen>
         ),
       );
 
-  Future<void> _openClaimFlow() async {
+  void _openClaimFlow() {
     final typeController = TextEditingController(text: 'Accident');
     final rideController = TextEditingController();
     final locationController = TextEditingController();
     final descriptionController = TextEditingController();
-    final claim = await showDialog<InsuranceClaim?>(
+    showDialog<void>(
       context: context,
+      barrierDismissible: true,
       builder: (dialogContext) {
         var submitting = false;
         String? validationError;
@@ -848,127 +849,69 @@ class _InsuranceScreenState extends State<InsuranceScreen>
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 DropdownButtonFormField<String>(
                   value: typeController.text,
-                  items: const [
-                    'Accident',
-                    'Hospitalization',
-                    'Injury',
-                    'Other eligible event'
-                  ]
-                      .map((value) =>
-                          DropdownMenuItem(value: value, child: Text(value)))
-                      .toList(),
-                  onChanged: submitting
-                      ? null
-                      : (value) => typeController.text = value ?? 'Accident',
+                  items: const ['Accident','Hospitalization','Injury','Other eligible event']
+                      .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+                  onChanged: submitting ? null : (v) => setDialogState(() { typeController.text = v ?? 'Accident'; }),
                   decoration: const InputDecoration(labelText: 'Incident type'),
                 ),
-                TextField(
-                    controller: rideController,
-                    enabled: !submitting,
-                    decoration: const InputDecoration(labelText: 'Ride ID')),
-                TextField(
-                    controller: locationController,
-                    enabled: !submitting,
-                    decoration:
-                        const InputDecoration(labelText: 'Incident location')),
-                TextField(
-                    controller: descriptionController,
-                    enabled: !submitting,
-                    maxLines: 3,
-                    decoration:
-                        const InputDecoration(labelText: 'Description')),
+                const SizedBox(height: 8),
+                TextField(controller: rideController, enabled: !submitting, decoration: const InputDecoration(labelText: 'Ride ID')),
+                const SizedBox(height: 8),
+                TextField(controller: locationController, enabled: !submitting, decoration: const InputDecoration(labelText: 'Incident location')),
+                const SizedBox(height: 8),
+                TextField(controller: descriptionController, enabled: !submitting, maxLines: 3, decoration: const InputDecoration(labelText: 'Description')),
                 if (validationError != null) ...[
                   const SizedBox(height: 10),
-                  Text(validationError!,
-                      style: const TextStyle(color: Colors.red)),
+                  Text(validationError!, style: const TextStyle(color: Colors.red)),
                 ],
               ]),
             ),
             actions: [
               TextButton(
-                  onPressed:
-                      submitting ? null : () => Navigator.pop(dialogContext),
-                  child: const Text('Cancel')),
+                onPressed: submitting ? null : () {
+                  Navigator.pop(dialogContext);
+                  typeController.dispose(); rideController.dispose();
+                  locationController.dispose(); descriptionController.dispose();
+                },
+                child: const Text('Cancel')),
               ElevatedButton(
-                onPressed: submitting
-                    ? null
-                    : () async {
-                        final rideId = rideController.text.trim();
-                        final location = locationController.text.trim();
-                        final description = descriptionController.text.trim();
-                        final claimType = typeController.text.trim();
-                        if (claimType.isEmpty ||
-                            rideId.isEmpty ||
-                            location.isEmpty ||
-                            description.isEmpty) {
-                          setDialogState(() => validationError =
-                              'Incident type, Ride ID, location and description are required.');
-                          return;
-                        }
-                        setDialogState(() {
-                          submitting = true;
-                          validationError = null;
-                        });
-                        // Capture ALL context data BEFORE async gap
-                        final incidentTime = TimeOfDay.now().format(ctx);
-                        final now = DateTime.now();
-                        final claimId = 'CLM-${now.millisecondsSinceEpoch}';
-                        final payload = {
-                          'claimType': claimType,
-                          'rideId': rideId,
-                          'incidentLocation': location,
-                          'description': description,
-                          'incidentDate': now.toIso8601String(),
-                          'incidentTime': incidentTime,
-                        };
-
-                        // INSTANT: Build local claim object and close dialog immediately
-                        // No await = no black screen
-                        final localClaim = InsuranceClaim(
-                          id: claimId,
-                          claimNumber: claimId,
-                          rideId: rideId,
-                          claimType: claimType,
-                          status: 'SUBMITTED',
-                          incidentDate: now,
-                          incidentLocation: location,
-                          description: description,
-                          createdAt: now,
-                        );
-
-                        if (dialogContext.mounted) {
-                          Navigator.pop(dialogContext, localClaim);
-                        }
-
-                        // Background sync — silent, non-blocking
-                        InsuranceService.instance
-                            .submitClaim(payload)
-                            .catchError((e) {
-                          debugPrint('Claim sync error (non-critical): $e');
-                        });
-                      },
-                child: submitting
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Text('Submit Claim'),
+                onPressed: submitting ? null : () {
+                  final rideId = rideController.text.trim();
+                  final location = locationController.text.trim();
+                  final description = descriptionController.text.trim();
+                  final claimType = typeController.text.trim();
+                  if (claimType.isEmpty || rideId.isEmpty || location.isEmpty || description.isEmpty) {
+                    setDialogState(() => validationError = 'All fields are required.');
+                    return;
+                  }
+                  final incidentTime = TimeOfDay.now().format(ctx);
+                  final now = DateTime.now();
+                  final claimId = 'CLM-${now.millisecondsSinceEpoch}';
+                  final localClaim = InsuranceClaim(
+                    id: claimId, claimNumber: claimId, rideId: rideId,
+                    claimType: claimType, status: 'SUBMITTED', incidentDate: now,
+                    incidentLocation: location, description: description, createdAt: now,
+                  );
+                  Navigator.pop(dialogContext);
+                  if (mounted) {
+                    setState(() => _claims = [localClaim, ..._claims]);
+                    AppToast.success(context, 'Claim submitted! ID: $claimId');
+                  }
+                  typeController.dispose(); rideController.dispose();
+                  locationController.dispose(); descriptionController.dispose();
+                  InsuranceService.instance.submitClaim({
+                    'claimType': claimType, 'rideId': rideId,
+                    'incidentLocation': location, 'description': description,
+                    'incidentDate': now.toIso8601String(), 'incidentTime': incidentTime,
+                  }).catchError((e) { debugPrint('Claim sync: $e'); });
+                },
+                child: const Text('Submit Claim'),
               ),
             ],
           ),
         );
       },
     );
-    // Dispose controllers AFTER the dialog has fully closed
-    typeController.dispose();
-    rideController.dispose();
-    locationController.dispose();
-    descriptionController.dispose();
-    // Guard: if cancelled (null) or widget unmounted, do nothing
-    if (claim == null || !mounted) return;
-    setState(() => _claims = [claim, ..._claims]);
-    AppToast.success(context,
-        'Claim submitted successfully. ID: ${claim.claimNumber.isEmpty ? claim.id : claim.claimNumber}');
   }
 
   Future<void> _showClaimDetails(InsuranceClaim claim) async {

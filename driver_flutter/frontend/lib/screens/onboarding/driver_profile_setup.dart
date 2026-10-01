@@ -602,18 +602,13 @@ class _DriverProfileSetupScreenState extends State<DriverProfileSetupScreen> {
                       profileImage: _photoPath,
                     );
 
-                    // Show success immediately — no backend wait
+                    // Show success toast — stay on same screen, no navigation
                     if (context.mounted) {
                       AppToast.success(
                           context, tr('Profile updated successfully!'));
                     }
 
-                    // Navigate back immediately
-                    if (widget.onSave != null) {
-                      widget.onSave!();
-                    } else if (widget.onBackTap != null) {
-                      widget.onBackTap!();
-                    }
+                    // NO navigate away — user stays on profile screen
 
                     // Backend sync in background — non-blocking
                     DriverBackendService.instance.updateProfile(
