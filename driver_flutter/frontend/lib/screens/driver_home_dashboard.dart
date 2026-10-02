@@ -755,93 +755,7 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
                                     ),
                                   ),
 
-                                  // 2.5 Incoming Ride Alert Banner
-                                  if (_isOnline) ...[
-                                    Builder(builder: (context) {
-                                      final ride = RideService.instance.availableRide;
-                                      final passengerName = ride?.passengerName ?? 'Rahul Sharma';
-                                      final pickupArea = ride?.pickupArea ?? 'Sector 62';
-                                      final totalFare = ride?.totalFare.toStringAsFixed(0) ?? '320';
-                                      
-                                      return Column(
-                                        children: [
-                                          const SizedBox(height: 10),
-                                          GestureDetector(
-                                            onTap: () {
-                                              // INSTANT: Show bottom sheet directly — no navigation, no loading
-                                              NotificationService.instance.playRideRequestRing();
-                                              _showIncomingRideSheet(
-                                                RideService.instance.availableRide,
-                                              );
-                                            },
-                                            child: Container(
-                                              padding: const EdgeInsets.symmetric(
-                                                  horizontal: 14, vertical: 10),
-                                              decoration: BoxDecoration(
-                                                color: const Color(0xFFEFF6FF),
-                                                borderRadius:
-                                                    BorderRadius.circular(14),
-                                                border: Border.all(
-                                                    color: const Color(0xFF3B82F6),
-                                                    width: 1.5),
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: const Color(0xFF2563EB)
-                                                        .withOpacity(0.12),
-                                                    blurRadius: 8,
-                                                    offset: const Offset(0, 3),
-                                                  ),
-                                                ],
-                                              ),
-                                              child: Row(
-                                                children: [
-                                                  Container(
-                                                    padding: const EdgeInsets.all(8),
-                                                    decoration: const BoxDecoration(
-                                                      color: Color(0xFF2563EB),
-                                                      shape: BoxShape.circle,
-                                                    ),
-                                                    child: const Icon(
-                                                        Icons.directions_car,
-                                                        color: Colors.white,
-                                                        size: 18),
-                                                  ),
-                                                  const SizedBox(width: 10),
-                                                  Expanded(
-                                                    child: Column(
-                                                      crossAxisAlignment:
-                                                          CrossAxisAlignment.start,
-                                                      children: [
-                                                        Text(
-                                                          'Incoming Ride: $passengerName',
-                                                          style: const TextStyle(
-                                                            color: Color(0xFF1E3A8A),
-                                                            fontWeight:
-                                                                FontWeight.bold,
-                                                            fontSize: 13,
-                                                          ),
-                                                        ),
-                                                        Text(
-                                                          '$pickupArea • ₹$totalFare • Tap to view',
-                                                          style: const TextStyle(
-                                                            color: Color(0xFF2563EB),
-                                                            fontSize: 11,
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                  const Icon(Icons.arrow_forward_ios,
-                                                      color: Color(0xFF2563EB),
-                                                      size: 14),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      );
-                                    }),
-                                  ],
+
 
                                   // 3. 3 Action Quick Circles: Go Online, Navigation, Support
                                   Row(
@@ -1289,10 +1203,10 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
                                     ],
                                   ),
 
-                                  // 8. Incoming Ride Request Banner
+                                  // 8. Bottom Status Banner — tap to re-show sheet (no re-ring)
                                   InkWell(
                                     onTap: _isOnline
-                                        ? widget.onIncomingRequestTap
+                                        ? () => _showIncomingRideSheet(RideService.instance.availableRide)
                                         : () async {
                                             await _setOnlineStatus(true);
                                           },
@@ -1318,22 +1232,19 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
                                                 : Icons.power_off,
                                             color: _isOnline
                                                 ? QuickServeColors.primaryBlue
-                                                : QuickServeColors
-                                                    .textSecondary,
+                                                : QuickServeColors.textSecondary,
                                             size: 17,
                                           ),
                                           const SizedBox(width: 8),
                                           Expanded(
                                             child: Text(
                                               _isOnline
-                                                  ? 'Ride Request Available! View Incoming Request'
+                                                  ? 'Ride Request Available! Tap to view'
                                                   : 'You are Offline • Tap Go Online to receive ride requests',
                                               style: TextStyle(
                                                 color: _isOnline
-                                                    ? QuickServeColors
-                                                        .primaryBlue
-                                                    : QuickServeColors
-                                                        .textSecondary,
+                                                    ? QuickServeColors.primaryBlue
+                                                    : QuickServeColors.textSecondary,
                                                 fontSize: 11.5,
                                                 fontWeight: FontWeight.bold,
                                               ),
@@ -1343,8 +1254,7 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
                                             Icons.arrow_forward_ios,
                                             color: _isOnline
                                                 ? QuickServeColors.primaryBlue
-                                                : QuickServeColors
-                                                    .textSecondary,
+                                                : QuickServeColors.textSecondary,
                                             size: 11,
                                           ),
                                         ],
