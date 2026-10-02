@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
 import 'core/app_toast.dart';
 import 'core/theme.dart';
 import 'core/demo_controller.dart';
@@ -134,12 +135,25 @@ class _QuickServeDriverRootFlowState extends State<QuickServeDriverRootFlow> {
   @override
   void initState() {
     super.initState();
-    // App opens normally on approved First Screen (GoRush Driver App Splash)
     _demoController = DemoFlowController(
       initialScreen: widget.initialScreen ?? DemoScreen.splashScreen,
       autoStart: false,
     );
     _demoController.addListener(_onControllerUpdate);
+    // Request location permission on app launch
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _requestLocationPermission();
+    });
+  }
+
+  Future<void> _requestLocationPermission() async {
+    try {
+      final status = await Geolocator.checkPermission();
+      if (status == LocationPermission.denied ||
+          status == LocationPermission.deniedForever) {
+        await Geolocator.requestPermission();
+      }
+    } catch (_) {}
   }
 
   void _onControllerUpdate() {
@@ -325,7 +339,8 @@ class _QuickServeDriverRootFlowState extends State<QuickServeDriverRootFlow> {
         return DriverHomeDashboardScreen(
           key: const ValueKey('screen_09_home'),
           onIncomingRequestTap: () {
-            _navigateTo(DemoScreen.incomingRideRequest);
+            // Go directly to passenger trip management — bottom sheet IS the ride request UI
+            _navigateTo(DemoScreen.passengerTripManagement);
           },
           onNavigationTap: () {
             _navigateTo(DemoScreen.navigationLiveMap);

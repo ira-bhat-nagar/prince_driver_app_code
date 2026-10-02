@@ -224,28 +224,29 @@ class _OtpVerificationLivenessScreenState
                         ),
                       ),
                       const SizedBox(height: 8),
-                      // Giant OTP digits side by side
+                      // Giant OTP digits side by side — Expanded so never cut off
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: _displayedOtp.split('').map((d) {
-                          return Container(
-                            margin: const EdgeInsets.symmetric(horizontal: 4),
-                            width: 38,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.15),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                  color: Colors.white.withOpacity(0.3),
-                                  width: 1),
-                            ),
-                            child: Center(
-                              child: Text(
-                                d,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 26,
-                                  fontWeight: FontWeight.bold,
+                          return Expanded(
+                            child: Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 3),
+                              height: 52,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                    color: Colors.white.withOpacity(0.3),
+                                    width: 1),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  d,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
                             ),
