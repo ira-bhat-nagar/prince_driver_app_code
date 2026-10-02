@@ -9,6 +9,7 @@ import '../../services/app_language_service.dart';
 import '../../services/token_storage_service.dart';
 import '../../services/auth_api_service.dart';
 import '../../services/driver_backend_service.dart';
+import 'driver_login_registration.dart'; // for OtpSession
 
 class DriverProfileSetupScreen extends StatefulWidget {
   final VoidCallback? onNext;
@@ -51,7 +52,10 @@ class _DriverProfileSetupScreenState extends State<DriverProfileSetupScreen> {
     final savedProfile = TokenStorageService.instance.driverProfile ??
         DriverBackendService.instance.driverProfile;
     final defaultName = (savedProfile?['name'] as String?)?.trim() ?? '';
-    final defaultPhone = (savedProfile?['phone'] as String?)?.trim() ?? '';
+    // Auto-fill phone from OTP session (registration number)
+    final sessionPhone = OtpSession.phoneNumber.isNotEmpty
+        ? OtpSession.phoneNumber
+        : (savedProfile?['phone'] as String?)?.trim() ?? '';
     final defaultEmail = (savedProfile?['email'] as String?)?.trim() ?? '';
     final defaultCity =
         (savedProfile?['city'] as String?)?.trim() ?? 'Noida & Delhi NCR';
@@ -59,7 +63,7 @@ class _DriverProfileSetupScreenState extends State<DriverProfileSetupScreen> {
         'Sector 62, Noida, Uttar Pradesh - 201309';
 
     _nameController = TextEditingController(text: defaultName);
-    _phoneController = TextEditingController(text: defaultPhone);
+    _phoneController = TextEditingController(text: sessionPhone);
     _emailController = TextEditingController(text: defaultEmail);
     _dobController = TextEditingController(text: '12-05-1995');
     _cityController = TextEditingController(text: defaultCity);
@@ -390,7 +394,7 @@ class _DriverProfileSetupScreenState extends State<DriverProfileSetupScreen> {
           onPressed: widget.onBackTap ?? () => Navigator.of(context).maybePop(),
         ),
         title: Text(
-          widget.isEditing ? tr('Edit Profile') : tr('Entity Your Name'),
+          widget.isEditing ? tr('Edit Profile') : tr('Complete Your Profile'),
           style: const TextStyle(
               color: QuickServeColors.textDark,
               fontSize: 18,
@@ -544,6 +548,7 @@ class _DriverProfileSetupScreenState extends State<DriverProfileSetupScreen> {
                 _phoneController,
                 prefixIcon: Icons.phone_outlined,
                 keyboardType: TextInputType.phone,
+                readOnly: true, // auto-filled from registration
               ),
               const SizedBox(height: 8),
               _buildField(
@@ -693,6 +698,7 @@ class _DriverProfileSetupScreenState extends State<DriverProfileSetupScreen> {
     TextEditingController controller, {
     required IconData prefixIcon,
     bool isDateOfBirth = false,
+    bool readOnly = false,
     VoidCallback? onTap,
     TextInputType? keyboardType,
   }) {
@@ -736,8 +742,11 @@ class _DriverProfileSetupScreenState extends State<DriverProfileSetupScreen> {
                       : TextField(
                           controller: controller,
                           keyboardType: keyboardType,
-                          style: const TextStyle(
-                            color: QuickServeColors.textDark,
+                          readOnly: readOnly,
+                          style: TextStyle(
+                            color: readOnly
+                                ? QuickServeColors.textSecondary
+                                : QuickServeColors.textDark,
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                           ),

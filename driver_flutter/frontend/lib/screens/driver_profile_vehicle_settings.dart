@@ -673,12 +673,19 @@ class _DriverProfileVehicleSettingsScreenState
                                 privacySettings: settings,
                               );
                             } catch (_) {}
+                            // Close bottom sheet
                             if (bottomSheetContext.mounted) {
                               Navigator.of(bottomSheetContext).pop();
                             }
                             if (context.mounted) {
                               AppToast.success(context,
                                   tr('Privacy and security settings updated.'));
+                            }
+                            // Navigate back to Profile page
+                            if (mounted && widget.onBackTap != null) {
+                              widget.onBackTap!();
+                            } else if (mounted) {
+                              Navigator.of(context).maybePop();
                             }
                           },
                           style: ElevatedButton.styleFrom(
