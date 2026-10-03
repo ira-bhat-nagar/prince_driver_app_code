@@ -366,6 +366,21 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
                                     : () async {
                                         setDialogState(
                                             () => isAccepting = true);
+                                        countdownTimer?.cancel();
+                                        NotificationService.instance
+                                            .stopRideRing();
+
+                                        // Demo ride: bypass API, navigate directly
+                                        if (ride.rideId
+                                            .startsWith('RIDE_DEMO_')) {
+                                          if (dialogCtx.mounted) {
+                                            Navigator.pop(dialogCtx);
+                                          }
+                                          widget.onIncomingRequestTap?.call();
+                                          return;
+                                        }
+
+                                        // Real ride: call API
                                         final accepted = await RideService
                                             .instance
                                             .acceptRide(
@@ -378,15 +393,12 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
                                               () => isAccepting = false);
                                           AppToast.error(
                                             dialogCtx,
-                                            RideService
-                                                    .instance.lastActionError ??
-                                                'Could not accept this ride. Please retry.',
+                                            RideService.instance
+                                                    .lastActionError ??
+                                                'Could not accept ride. Please retry.',
                                           );
                                           return;
                                         }
-                                        countdownTimer?.cancel();
-                                        NotificationService.instance
-                                            .stopRideRing();
                                         Navigator.pop(dialogCtx);
                                         widget.onIncomingRequestTap?.call();
                                       },

@@ -1153,12 +1153,29 @@ class _DriverProfileVehicleSettingsScreenState
                         subtitle: tr('Driver and vehicle policy details'),
                         onTap: widget.onInsuranceTap,
                       ),
-                      _buildSettingItem(
-                        icon: Icons.account_balance_outlined,
-                        title: tr('Bank Details & UPI'),
-                        subtitle: tr('HDFC Bank • Instant Payouts'),
-                        onTap: widget.onBankTap,
-                      ),
+                      Builder(builder: (ctx) {
+                        final bank = _effectiveProfile?['bankDetails']
+                            as Map<String, dynamic>?;
+                        final acct = bank?['accountNumber'] as String? ?? '';
+                        final ifsc = bank?['ifscCode'] as String? ?? '';
+                        String bankSubtitle;
+                        if (acct.isNotEmpty) {
+                          final masked = acct.length > 4
+                              ? '****${acct.substring(acct.length - 4)}'
+                              : acct;
+                          bankSubtitle = ifsc.isNotEmpty
+                              ? '$masked  •  $ifsc'
+                              : masked;
+                        } else {
+                          bankSubtitle = tr('Add bank account for payouts');
+                        }
+                        return _buildSettingItem(
+                          icon: Icons.account_balance_outlined,
+                          title: tr('Bank Details & UPI'),
+                          subtitle: bankSubtitle,
+                          onTap: widget.onBankTap,
+                        );
+                      }),
                     ]),
 
                     const SizedBox(height: 16),
