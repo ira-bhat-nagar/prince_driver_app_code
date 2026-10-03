@@ -102,7 +102,7 @@ class _SplashScreenState extends State<SplashScreen> {
                     ),
                     const SizedBox(height: 22),
                     const Text(
-                      'Driver App',
+                      'Captain App',
                       style: TextStyle(
                         color: Color(0xFF93C5FD), // Soft Sky Blue
                         fontSize: 26,

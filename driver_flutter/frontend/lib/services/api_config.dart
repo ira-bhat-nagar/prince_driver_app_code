@@ -11,7 +11,7 @@ class ApiConfig {
   static const String _buildBaseUrl = String.fromEnvironment('API_BASE_URL');
 
   /// Primary LAN IP of the host machine running the backend (Windows PC)
-  static const String currentLanHost = '192.168.1.15';
+  static const String currentLanHost = '192.168.1.42';
 
   /// Optional custom base URL override for staging, testing, or custom deployments
   static String? customBaseUrl;
@@ -34,11 +34,15 @@ class ApiConfig {
           : ['http://localhost:$defaultPort'];
     }
 
-    // Physical device priority: LAN → build-time override → emulator fallbacks
+    // A configured endpoint is authoritative. Racing a POST against unrelated
+    // fallback hosts can submit the same registration more than once.
+    if (customBaseUrl != null && customBaseUrl!.isNotEmpty) {
+      return [customBaseUrl!];
+    }
+    if (_buildBaseUrl.isNotEmpty) return [_buildBaseUrl];
+
     return [
-      if (customBaseUrl != null && customBaseUrl!.isNotEmpty) customBaseUrl!,
       'http://$currentLanHost:$defaultPort',
-      if (_buildBaseUrl.isNotEmpty) _buildBaseUrl,
       'http://10.0.2.2:$defaultPort',
       'http://localhost:$defaultPort',
       'http://127.0.0.1:$defaultPort',

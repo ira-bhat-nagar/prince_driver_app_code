@@ -19,6 +19,7 @@ class RideService extends ChangeNotifier {
   io.Socket? _socket;
   StreamSubscription? _locationSubscription;
   Timer? _syncTimer;
+  Timer? _offerPollTimer;
 
   bool _isOnline = false;
   bool get isOnline => _isOnline;
@@ -49,7 +50,9 @@ class RideService extends ChangeNotifier {
   Map<String, String> get _headers => ApiConfig.getHeaders(token: _token);
 
   Duration _timeoutForCandidate(String base) {
-    if (base.contains('localhost') || base.contains('127.0.0.1') || base.contains('10.0.2.2')) {
+    if (base.contains('localhost') ||
+        base.contains('127.0.0.1') ||
+        base.contains('10.0.2.2')) {
       return const Duration(seconds: 8);
     }
     return const Duration(seconds: 12);
@@ -74,7 +77,7 @@ class RideService extends ChangeNotifier {
     }
 
     // Race all candidates in parallel — fastest wins
-    final completer = Completer<http.Response>();
+    final completer = Completer<http.Response?>();
     int pending = ApiConfig.candidateBaseUrls.length;
 
     for (final base in ApiConfig.candidateBaseUrls) {
@@ -106,7 +109,7 @@ class RideService extends ChangeNotifier {
   Future<http.Response> _makeRequest(
       String method, String url, Map<String, dynamic>? body) {
     final uri = Uri.parse(url);
-    final timeout = const Duration(seconds: 12);
+    final timeout = _timeoutForCandidate(uri.origin);
     final postBody = body != null ? jsonEncode(body) : null;
     switch (method) {
       case 'POST':
@@ -152,6 +155,16 @@ class RideService extends ChangeNotifier {
     _connectRealtime();
     _syncTimer ??=
         Timer.periodic(const Duration(seconds: 20), (_) => _syncFromServer());
+    if (_isOnline) _startOfferPolling();
+  }
+
+  void _startOfferPolling() {
+    _offerPollTimer?.cancel();
+    _offerPollTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (_isOnline && _activeRide == null) {
+        fetchAvailableRide();
+      }
+    });
   }
 
   void _connectRealtime() {
@@ -220,6 +233,7 @@ class RideService extends ChangeNotifier {
 
   /// 1. Toggle Online / Offline Status in MongoDB Atlas
   Future<bool> setOnlineStatus(bool online) async {
+    final previousStatus = _isOnline;
     _isOnline = online;
     _socket?.emit('driver:availability', {'online': online});
     notifyListeners();
@@ -243,10 +257,12 @@ class RideService extends ChangeNotifier {
         _isOnline = persistedStatus != 'offline';
         debugPrint(
             '[RideService] ✅ Driver status updated to ${online ? 'ONLINE' : 'OFFLINE'}');
-        if (online) {
-          await fetchAvailableRide();
-        } else {
+        if (!online) {
           _availableRide = null;
+          _offerPollTimer?.cancel();
+          _offerPollTimer = null;
+        } else {
+          _startOfferPolling();
         }
         notifyListeners();
         return true;
@@ -255,19 +271,10 @@ class RideService extends ChangeNotifier {
       debugPrint('[RideService] ⚠️ Driver status sync error: $e');
     }
 
-    // Fallback: If backend is down, pretend success for demo mode
-    final profile = Map<String, dynamic>.from(
-        _tokenStorage.driverProfile ?? const <String, dynamic>{});
-    profile['status'] = online ? 'online' : 'offline';
-    await _tokenStorage.setDriverProfile(profile);
-    _isOnline = online;
-    if (online) {
-      await fetchAvailableRide();
-    } else {
-      _availableRide = null;
-    }
+    _isOnline = previousStatus;
+    _socket?.emit('driver:availability', {'online': previousStatus});
     notifyListeners();
-    return true;
+    return false;
   }
 
   /// 2. Fetch Incoming Available Ride Offer
@@ -300,11 +307,9 @@ class RideService extends ChangeNotifier {
       debugPrint('[RideService] fetchAvailableRide error: $e');
     }
 
-    // Mock Ride if backend fails (Demo mode)
-    final mockRide = RideModel.defaultSample();
-    _availableRide = mockRide;
+    _availableRide = null;
     notifyListeners();
-    return mockRide;
+    return null;
   }
 
   bool _isProcessingAction = false;
@@ -320,8 +325,11 @@ class RideService extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    if (rideId == 'default_ride_sample' || rideId == 'GR-108709' || rideId == 'mock_ride_123') {
-      _activeRide = offer?.copyWith(status: 'accepted') ?? RideModel.defaultSample().copyWith(status: 'accepted');
+    if (rideId == 'default_ride_sample' ||
+        rideId == 'GR-108709' ||
+        rideId == 'mock_ride_123') {
+      _activeRide = offer?.copyWith(status: 'accepted') ??
+          RideModel.defaultSample().copyWith(status: 'accepted');
       _availableRide = null;
       _isLoading = false;
       _isProcessingAction = false;
@@ -379,7 +387,9 @@ class RideService extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    if (rideId == 'default_ride_sample' || rideId == 'GR-108709' || rideId == 'mock_ride_123') {
+    if (rideId == 'default_ride_sample' ||
+        rideId == 'GR-108709' ||
+        rideId == 'mock_ride_123') {
       _availableRide = null;
       _activeRide = null;
       _isLoading = false;
@@ -422,8 +432,11 @@ class RideService extends ChangeNotifier {
 
   /// 5. Mark Arrived at Pickup
   Future<bool> markArrived(String rideId) async {
-    if (rideId == 'default_ride_sample' || rideId == 'GR-108709' || rideId == 'mock_ride_123') {
-      _activeRide = _activeRide?.copyWith(status: 'arrived') ?? RideModel.defaultSample().copyWith(status: 'arrived');
+    if (rideId == 'default_ride_sample' ||
+        rideId == 'GR-108709' ||
+        rideId == 'mock_ride_123') {
+      _activeRide = _activeRide?.copyWith(status: 'arrived') ??
+          RideModel.defaultSample().copyWith(status: 'arrived');
       notifyListeners();
       return true;
     }
@@ -454,8 +467,11 @@ class RideService extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    if (rideId == 'default_ride_sample' || rideId == 'GR-108709' || rideId == 'mock_ride_123') {
-      _activeRide = _activeRide?.copyWith(status: 'in_progress') ?? RideModel.defaultSample().copyWith(status: 'in_progress');
+    if (rideId == 'default_ride_sample' ||
+        rideId == 'GR-108709' ||
+        rideId == 'mock_ride_123') {
+      _activeRide = _activeRide?.copyWith(status: 'in_progress') ??
+          RideModel.defaultSample().copyWith(status: 'in_progress');
       _isLoading = false;
       _isProcessingAction = false;
       notifyListeners();
@@ -495,8 +511,11 @@ class RideService extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    if (rideId == 'default_ride_sample' || rideId == 'GR-108709' || rideId == 'mock_ride_123') {
-      _lastCompletedRide = _activeRide?.copyWith(status: 'completed') ?? RideModel.defaultSample().copyWith(status: 'completed');
+    if (rideId == 'default_ride_sample' ||
+        rideId == 'GR-108709' ||
+        rideId == 'mock_ride_123') {
+      _lastCompletedRide = _activeRide?.copyWith(status: 'completed') ??
+          RideModel.defaultSample().copyWith(status: 'completed');
       _activeRide = null;
       _isLoading = false;
       _isProcessingAction = false;
@@ -544,6 +563,8 @@ class RideService extends ChangeNotifier {
     _locationSubscription = null;
     _syncTimer?.cancel();
     _syncTimer = null;
+    _offerPollTimer?.cancel();
+    _offerPollTimer = null;
     _socket?.disconnect();
     _socket = null;
     _httpClient.close();
@@ -631,6 +652,6 @@ class RideService extends ChangeNotifier {
       'accuracy': position.accuracy,
       'rideId': _activeRide?.rideId,
     });
-    return true; // Fallback for demo mode
+    return res != null && (res.statusCode == 200 || res.statusCode == 201);
   }
 }

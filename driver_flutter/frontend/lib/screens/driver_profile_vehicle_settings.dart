@@ -659,27 +659,31 @@ class _DriverProfileVehicleSettingsScreenState
                         ),
                         const SizedBox(height: 10),
                         ElevatedButton(
-                          onPressed: () async {
+                          onPressed: () {
                             final settings = {
                               'biometricLock': _biometricLock,
                               'backgroundLocation': _backgroundLocation,
                               'twoFactorAuth': _twoFactorAuth,
                               'maskPhoneNumber': _maskPhoneNumber,
                             };
-                            await TokenStorageService.instance
-                                .savePrivacySettings(settings);
-                            try {
-                              await DriverBackendService.instance.updateProfile(
-                                privacySettings: settings,
-                              );
-                            } catch (_) {}
-                            // Just close the bottom sheet — user stays on Profile page
+                            // INSTANT: Save locally (sync-safe), close sheet, show toast
+                            TokenStorageService.instance.savePrivacySettings(settings).catchError((_) {});
+                            // Backend sync in background — never blocks UI
+                            DriverBackendService.instance
+                                .updateProfile(privacySettings: settings)
+                                .then<void>(
+                                  (_) {},
+                                  onError: (Object error) {
+                                    debugPrint(
+                                        '[PrivacySettings] Sync failed: $error');
+                                  },
+                                );
+                            // Close sheet immediately
                             if (bottomSheetContext.mounted) {
                               Navigator.of(bottomSheetContext).pop();
                             }
                             if (context.mounted) {
-                              AppToast.success(context,
-                                  tr('Security settings saved!'));
+                              AppToast.success(context, tr('Security settings saved!'));
                             }
                           },
                           style: ElevatedButton.styleFrom(
@@ -1445,21 +1449,33 @@ class _ChangePasswordPinModalState extends State<_ChangePasswordPinModal> {
 
     setState(() => _isSubmitting = true);
 
-    // INSTANT: Close modal and show success immediately
-    // Backend sync happens in background — no waiting
-    if (mounted) {
+    final result = await AuthApiService.instance
+        .changePassword(
+          currentPassword: curPass,
+          newPassword: newPass,
+          confirmPassword: confPass,
+        )
+        .timeout(
+          const Duration(seconds: 8),
+          onTimeout: () => AuthResult.failure(
+            message: tr('Password update timed out. Please try again.'),
+          ),
+        );
+    if (!mounted) return;
+    setState(() => _isSubmitting = false);
+    if (result.success) {
       Navigator.of(context).pop();
-      widget.onSuccess(tr('Password updated successfully! ✓'));
+      widget.onSuccess(result.message.isNotEmpty
+          ? result.message
+          : tr('Password updated successfully!'));
+    } else {
+      AppToast.error(
+        context,
+        result.message.isNotEmpty
+            ? result.message
+            : tr('Unable to update password. Please try again.'),
+      );
     }
-
-    // Background sync — non-blocking
-    AuthApiService.instance.changePassword(
-      currentPassword: curPass,
-      newPassword: newPass,
-      confirmPassword: confPass,
-    ).timeout(const Duration(seconds: 8)).catchError((e) {
-      debugPrint('[Password] Backend sync error: $e');
-    });
   }
 
   @override

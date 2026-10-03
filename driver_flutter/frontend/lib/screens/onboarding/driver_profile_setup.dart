@@ -637,19 +637,25 @@ class _DriverProfileSetupScreenState extends State<DriverProfileSetupScreen> {
                     final email = _emailController.text.trim();
                     final city = _cityController.text.trim();
                     final address = _addressController.text.trim();
-                    if (name.isNotEmpty) {
-                      await TokenStorageService.instance.updateProfile(
-                        name: name,
-                        phone: phone,
-                        email: email,
-                        city: city,
-                        address: address,
-                      );
-                      await DriverBackendService.instance.saveSession(
-                        driverProfile:
-                            TokenStorageService.instance.driverProfile,
-                      );
+                    if (name.isEmpty) {
+                      AppToast.error(context, tr('Please enter your full name'));
+                      return;
                     }
+                    // Update the in-memory profile synchronously, persist in the
+                    // background, and let onboarding continue without waiting
+                    // for disk I/O or a backend round trip.
+                    TokenStorageService.instance
+                        .updateProfile(
+                          name: name,
+                          phone: phone,
+                          email: email,
+                          city: city,
+                          address: address,
+                        )
+                        .catchError((error) {
+                      debugPrint('[Profile] Local profile save error: $error');
+                      return false;
+                    });
                     if (widget.onNext != null) {
                       widget.onNext!();
                     }

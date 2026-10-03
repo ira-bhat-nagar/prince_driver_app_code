@@ -8,6 +8,7 @@ import '../services/token_storage_service.dart';
 import '../services/ride_service.dart';
 import '../services/notification_service.dart';
 import '../services/wallet_service.dart';
+import '../models/ride_model.dart';
 
 class DriverHomeDashboardScreen extends StatefulWidget {
   final VoidCallback? onSosTap;
@@ -54,6 +55,8 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
   // Static variable persists online state across widget rebuilds/navigation
   static bool _persistedOnline = false;
   bool _isOnline = false;
+  String? _shownRideId;
+  final Set<String> _autoAlertedRideIds = {};
 
   @override
   void initState() {
@@ -90,10 +93,15 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
   }
 
   void _onRideServiceChanged() {
-    // NOTE: Do NOT sync _isOnline from RideService here.
-    // The online/offline toggle is owned by the driver's tap, not backend state.
-    // Syncing from backend causes the button to flip offline when fetchAvailableRide() is called.
-    if (mounted) setState(() {}); // Only rebuild UI for ride data changes
+    if (!mounted) return;
+    setState(() {});
+    final ride = RideService.instance.availableRide;
+    if (_isOnline &&
+        ride != null &&
+        ride.rideId != _shownRideId &&
+        _autoAlertedRideIds.add(ride.rideId)) {
+      unawaited(_showIncomingRideSheet(ride));
+    }
   }
 
   void _onWalletChanged() {
@@ -101,65 +109,115 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
   }
 
   Future<void> _setOnlineStatus(bool online) async {
-    // Persist state statically so it survives navigation rebuilds
+    // INSTANT: update UI immediately — no blocking API wait
     _persistedOnline = online;
     setState(() => _isOnline = online);
-    NotificationService.instance.showOnlineStatusNotification(isOnline: online);
 
     if (online) {
       AppToast.success(context, 'You are Online! Looking for rides...');
-
-      // 2. Sync to backend (non-blocking)
+      // Backend sync in background (non-blocking)
       RideService.instance.setOnlineStatus(true).catchError((_) {});
-
-      // 3. Show ride notification after brief delay (let UI settle first)
-      Future.delayed(const Duration(milliseconds: 600), () async {
-        if (!mounted) return;
-        // Try to get real ride from backend
-        dynamic available;
-        try {
-          available = await RideService.instance.fetchAvailableRide()
-              .timeout(const Duration(seconds: 5));
-        } catch (_) {
-          available = null;
+      unawaited(NotificationService.instance.showOnlineStatusNotification(isOnline: true));
+      // Demo ride arrives automatically after 2 seconds
+      Future.delayed(const Duration(seconds: 2), () {
+        if (mounted && _isOnline) {
+          _triggerDemoRideRequest();
         }
-        if (!mounted) return;
-        // Play ring + show the ride alert sheet
-        NotificationService.instance.playRideRequestRing();
-        _showIncomingRideSheet(available);
       });
     } else {
       AppToast.info(context, 'You are now Offline.');
       RideService.instance.setOnlineStatus(false).catchError((_) {});
+      unawaited(NotificationService.instance.stopRideRing());
+      unawaited(NotificationService.instance.showOnlineStatusNotification(isOnline: false));
     }
   }
 
-  void _showIncomingRideSheet(dynamic ride) {
-    final passengerName = ride?.passengerName ?? 'Passenger';
-    final pickup = ride?.pickupAddress ?? 'Sector 62, Noida';
-    final drop = ride?.dropoffAddress ?? 'Connaught Place, Delhi';
-    final fare = ride?.estimatedFare ?? 320.0;
-    final distance = ride?.distanceKm ?? 14.2;
+  /// Creates a realistic demo ride and shows it instantly on dashboard
+  void _triggerDemoRideRequest() {
+    final demoRide = RideModel(
+      id: 'demo_${DateTime.now().millisecondsSinceEpoch}',
+      rideId: 'RIDE_DEMO_${DateTime.now().millisecondsSinceEpoch}',
+      status: 'requested',
+      passengerName: 'Rahul Sharma',
+      passengerPhone: '9876543210',
+      passengerRating: 4.8,
+      passengerTotalRides: 47,
+      passengerAvatar: '',
+      vehicleTier: 'Standard',
+      pickupAddress: 'Sector 62, Noida, UP',
+      pickupArea: 'Sector 62, Noida',
+      pickupDistanceAway: '0.8 km away',
+      pickupLat: 28.6270,
+      pickupLng: 77.3680,
+      destinationAddress: 'Connaught Place, New Delhi',
+      destinationArea: 'Connaught Place, Delhi',
+      destinationLat: 28.6315,
+      destinationLng: 77.2167,
+      distanceKm: 14.2,
+      durationMin: 42,
+      otp: '7291',
+      baseFare: 60.0,
+      distanceFare: 220.0,
+      taxes: 40.0,
+      totalFare: 320.0,
+      driverEarnings: 288.0,
+      paymentMethod: 'Cash',
+      requestedAt: DateTime.now(),
+    );
+    unawaited(_showIncomingRideSheet(demoRide));
+  }
 
-    showModalBottomSheet(
+  Future<void> _fetchAndShowIncomingRide(
+      {bool showUnavailableMessage = false}) async {
+    try {
+      final ride = await RideService.instance
+          .fetchAvailableRide()
+          .timeout(const Duration(seconds: 5));
+      if (!mounted) return;
+      if (ride == null) {
+        if (showUnavailableMessage) {
+          AppToast.info(context, 'No ride request is available right now.');
+        }
+        return;
+      }
+      if (!_autoAlertedRideIds.add(ride.rideId)) return;
+      await _showIncomingRideSheet(ride);
+    } catch (error) {
+      debugPrint('[Dashboard] Ride request check failed: $error');
+    }
+  }
+
+  Future<void> _showIncomingRideSheet(RideModel ride) async {
+    if (_shownRideId == ride.rideId) return;
+    _shownRideId = ride.rideId;
+    unawaited(NotificationService.instance.playRideRequestRing());
+    unawaited(
+        NotificationService.instance.showNewRideRequestNotification(ride));
+
+    showDialog<void>(
       context: context,
-      isDismissible: false,
-      enableDrag: false,
-      backgroundColor: Colors.transparent,
+      barrierDismissible: false,
       builder: (ctx) {
         int secondsLeft = 30;
-        Timer? _countdownTimer;
+        bool isAccepting = false;
+        Timer? countdownTimer;
 
         return StatefulBuilder(
-          builder: (sheetCtx, setSheetState) {
-            // Start timer on first build
-            _countdownTimer ??= Timer.periodic(const Duration(seconds: 1), (t) {
-              if (!sheetCtx.mounted) { t.cancel(); return; }
-              setSheetState(() => secondsLeft--);
+          builder: (dialogCtx, setDialogState) {
+            countdownTimer ??= Timer.periodic(const Duration(seconds: 1), (t) {
+              if (!dialogCtx.mounted) {
+                t.cancel();
+                return;
+              }
+              setDialogState(() => secondsLeft--);
               if (secondsLeft <= 0) {
                 t.cancel();
                 NotificationService.instance.stopRideRing();
-                if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+                unawaited(RideService.instance.rejectRide(
+                  ride.rideId,
+                  reason: 'Request timed out',
+                ));
+                if (dialogCtx.mounted) Navigator.pop(dialogCtx);
               }
             });
 
@@ -170,182 +228,217 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
                     ? const Color(0xFFF59E0B)
                     : Colors.red;
 
-            return Container(
-              margin: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white,
+            return Dialog(
+              insetPadding:
+                  const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20)),
+              child: ClipRRect(
                 borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.18),
-                    blurRadius: 24,
-                    offset: const Offset(0, -4),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Handle bar
-                  Container(
-                    margin: const EdgeInsets.only(top: 10),
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  // Header with passenger + fare + TIMER
-                  Container(
-                    margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1E3A8A),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.directions_car, color: Colors.white, size: 20),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'New Ride — $passengerName',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            ),
-                          ),
+                child: ColoredBox(
+                  color: Colors.white,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1E3A8A),
                         ),
-                        // Fare chip
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.green,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            '₹${fare.toInt()}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        // 30-second countdown timer circle
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: timerColor.withOpacity(0.15),
-                            border: Border.all(color: timerColor, width: 2.5),
-                          ),
-                          child: Center(
-                            child: Text(
-                              '$secondsLeft',
-                              style: TextStyle(
-                                color: timerColor,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 15,
+                        child: Row(
+                          children: [
+                            const Icon(Icons.directions_car,
+                                color: Colors.white, size: 20),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'New Ride — ${ride.passengerName}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
                               ),
                             ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Trip details
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      children: [
-                        _rideDetailRow(Icons.circle, Colors.green, 'Pickup', pickup),
-                        const SizedBox(height: 8),
-                        _rideDetailRow(Icons.location_on, Colors.red, 'Drop', drop),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            _chipInfo('${distance.toStringAsFixed(1)} km', Icons.straighten),
-                            const SizedBox(width: 10),
-                            _chipInfo('~${(distance * 3).toInt()} min', Icons.timer_outlined),
+                            // Fare chip
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.green,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                '₹${ride.totalFare.toStringAsFixed(0)}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            // 30-second countdown timer circle
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: timerColor.withOpacity(0.15),
+                                border:
+                                    Border.all(color: timerColor, width: 2.5),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  '$secondsLeft',
+                                  style: TextStyle(
+                                    color: timerColor,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                              ),
+                            ),
                           ],
                         ),
-                      ],
-                    ),
-                  ),
-                  // Action buttons
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () {
-                              _countdownTimer?.cancel();
-                              NotificationService.instance.stopRideRing();
-                              Navigator.pop(ctx);
-                              AppToast.info(context, 'Ride declined.');
-                            },
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.red,
-                              side: const BorderSide(color: Colors.red),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          children: [
+                            _rideDetailRow(Icons.circle, Colors.green, 'Pickup',
+                                ride.pickupAddress),
+                            const SizedBox(height: 8),
+                            _rideDetailRow(Icons.location_on, Colors.red,
+                                'Drop', ride.destinationAddress),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                _chipInfo(
+                                    '${ride.distanceKm.toStringAsFixed(1)} km',
+                                    Icons.straighten),
+                                const SizedBox(width: 10),
+                                _chipInfo('~${ride.durationMin} min',
+                                    Icons.timer_outlined),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () {
+                                  countdownTimer?.cancel();
+                                  NotificationService.instance.stopRideRing();
+                                  unawaited(RideService.instance.rejectRide(
+                                    ride.rideId,
+                                    reason: 'Driver rejected',
+                                  ));
+                                  Navigator.pop(dialogCtx);
+                                  AppToast.info(context, 'Ride declined.');
+                                },
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.red,
+                                  side: const BorderSide(color: Colors.red),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 14),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: const Text('REJECT',
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15)),
                               ),
                             ),
-                            child: const Text('REJECT',
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          flex: 2,
-                          child: ElevatedButton(
-                            onPressed: () {
-                              _countdownTimer?.cancel();
-                              NotificationService.instance.stopRideRing();
-                              Navigator.pop(ctx);
-                              if (widget.onIncomingRequestTap != null) {
-                                widget.onIncomingRequestTap!();
-                              }
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF1E3A8A),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 2,
+                              child: ElevatedButton(
+                                onPressed: isAccepting
+                                    ? null
+                                    : () async {
+                                        setDialogState(
+                                            () => isAccepting = true);
+                                        final accepted = await RideService
+                                            .instance
+                                            .acceptRide(
+                                          ride.rideId,
+                                          offer: ride,
+                                        );
+                                        if (!dialogCtx.mounted) return;
+                                        if (!accepted) {
+                                          setDialogState(
+                                              () => isAccepting = false);
+                                          AppToast.error(
+                                            dialogCtx,
+                                            RideService
+                                                    .instance.lastActionError ??
+                                                'Could not accept this ride. Please retry.',
+                                          );
+                                          return;
+                                        }
+                                        countdownTimer?.cancel();
+                                        NotificationService.instance
+                                            .stopRideRing();
+                                        Navigator.pop(dialogCtx);
+                                        widget.onIncomingRequestTap?.call();
+                                      },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF1E3A8A),
+                                  foregroundColor: Colors.white,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 14),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  elevation: 0,
+                                ),
+                                child: isAccepting
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : const Text('ACCEPT RIDE',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 15)),
                               ),
-                              elevation: 0,
                             ),
-                            child: const Text('ACCEPT RIDE',
-                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                          ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             );
           },
         );
       },
-    );
-    NotificationService.instance.showNewRideRequestNotification();
+    ).whenComplete(() {
+      if (_shownRideId == ride.rideId) _shownRideId = null;
+    });
   }
 
-  Widget _rideDetailRow(IconData icon, Color color, String label, String value) {
+  Widget _rideDetailRow(
+      IconData icon, Color color, String label, String value) {
     return Row(
       children: [
         Icon(icon, color: color, size: 14),
         const SizedBox(width: 8),
-        Text('$label: ', style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12)),
+        Text('$label: ',
+            style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12)),
         Expanded(
           child: Text(value,
               style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
@@ -367,7 +460,9 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
         children: [
           Icon(icon, size: 14, color: const Color(0xFF6B7280)),
           const SizedBox(width: 4),
-          Text(text, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+          Text(text,
+              style:
+                  const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
         ],
       ),
     );
@@ -755,8 +850,6 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
                                     ),
                                   ),
 
-
-
                                   // 3. 3 Action Quick Circles: Go Online, Navigation, Support
                                   Row(
                                     mainAxisAlignment:
@@ -885,7 +978,8 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
                                               child: _buildMetricTile(
                                                 title: 'Avg. Rating',
                                                 value: '4.8 ★',
-                                                icon: Icons.star_outline_rounded,
+                                                icon:
+                                                    Icons.star_outline_rounded,
                                                 iconColor:
                                                     const Color(0xFFF59E0B),
                                               ),
@@ -912,10 +1006,13 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
 
                                   // 5.5 Wallet Balance Card
                                   Builder(builder: (ctx) {
-                                    final wallet = WalletService.instance.wallet;
-                                    final hasLowBalance = WalletService.instance.hasLowBalance;
+                                    final wallet =
+                                        WalletService.instance.wallet;
+                                    final hasLowBalance =
+                                        WalletService.instance.hasLowBalance;
                                     final balance = wallet?.balance ?? 0.0;
-                                    final minBal = WalletService.instance.minimumWalletBalance;
+                                    final minBal = WalletService
+                                        .instance.minimumWalletBalance;
                                     return GestureDetector(
                                       onTap: widget.onWalletTap,
                                       child: Container(
@@ -945,15 +1042,13 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
                                         child: Row(
                                           children: [
                                             Container(
-                                              padding:
-                                                  const EdgeInsets.all(8),
+                                              padding: const EdgeInsets.all(8),
                                               decoration: BoxDecoration(
                                                 color: hasLowBalance
                                                     ? const Color(0xFFFFF3CD)
                                                     : const Color(0xFFEFF6FF),
                                                 borderRadius:
-                                                    BorderRadius.circular(
-                                                        10),
+                                                    BorderRadius.circular(10),
                                               ),
                                               child: Icon(
                                                 hasLowBalance
@@ -1206,7 +1301,9 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
                                   // 8. Bottom Status Banner — tap to re-show sheet (no re-ring)
                                   InkWell(
                                     onTap: _isOnline
-                                        ? () => _showIncomingRideSheet(RideService.instance.availableRide)
+                                        ? () => _fetchAndShowIncomingRide(
+                                              showUnavailableMessage: true,
+                                            )
                                         : () async {
                                             await _setOnlineStatus(true);
                                           },
@@ -1227,24 +1324,36 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
                                       child: Row(
                                         children: [
                                           Icon(
-                                            _isOnline
+                                            _isOnline &&
+                                                    RideService.instance
+                                                            .availableRide !=
+                                                        null
                                                 ? Icons.notifications_active
-                                                : Icons.power_off,
+                                                : (_isOnline
+                                                    ? Icons.search
+                                                    : Icons.power_off),
                                             color: _isOnline
                                                 ? QuickServeColors.primaryBlue
-                                                : QuickServeColors.textSecondary,
+                                                : QuickServeColors
+                                                    .textSecondary,
                                             size: 17,
                                           ),
                                           const SizedBox(width: 8),
                                           Expanded(
                                             child: Text(
                                               _isOnline
-                                                  ? 'Ride Request Available! Tap to view'
+                                                  ? (RideService.instance
+                                                              .availableRide !=
+                                                          null
+                                                      ? 'Ride Request Available! Tap to view'
+                                                      : 'You are online • Searching for rides')
                                                   : 'You are Offline • Tap Go Online to receive ride requests',
                                               style: TextStyle(
                                                 color: _isOnline
-                                                    ? QuickServeColors.primaryBlue
-                                                    : QuickServeColors.textSecondary,
+                                                    ? QuickServeColors
+                                                        .primaryBlue
+                                                    : QuickServeColors
+                                                        .textSecondary,
                                                 fontSize: 11.5,
                                                 fontWeight: FontWeight.bold,
                                               ),
@@ -1254,7 +1363,8 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
                                             Icons.arrow_forward_ios,
                                             color: _isOnline
                                                 ? QuickServeColors.primaryBlue
-                                                : QuickServeColors.textSecondary,
+                                                : QuickServeColors
+                                                    .textSecondary,
                                             size: 11,
                                           ),
                                         ],

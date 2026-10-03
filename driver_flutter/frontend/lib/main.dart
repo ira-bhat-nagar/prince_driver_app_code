@@ -108,7 +108,7 @@ class QuickServeDriverApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       navigatorKey: _appNavigatorKey,
-      title: 'QuickServe Driver App',
+      title: 'GoRush Captain App',
       debugShowCheckedModeBanner: false,
       theme: QuickServeTheme.lightTheme,
       home: QuickServeDriverRootFlow(initialScreen: initialScreen),
@@ -131,6 +131,7 @@ class _QuickServeDriverRootFlowState extends State<QuickServeDriverRootFlow> {
   late final DemoFlowController _demoController;
   final List<DemoScreen> _navigationHistory = [];
   Timer? _splashTimer;
+  bool _otpVerifiedForRegistration = false;
 
   @override
   void initState() {
@@ -235,8 +236,15 @@ class _QuickServeDriverRootFlowState extends State<QuickServeDriverRootFlow> {
       case DemoScreen.loginRegister:
         return DriverLoginRegistrationScreen(
           key: UniqueKey(),
+          otpVerified: _otpVerifiedForRegistration,
           onGetOtp: () {
+            _otpVerifiedForRegistration = false;
             _navigateTo(DemoScreen.otpVerification);
+          },
+          onRegistrationSuccess: () {
+            _otpVerifiedForRegistration = false;
+            _navigationHistory.clear();
+            _navigateTo(DemoScreen.uploadDocuments);
           },
           onLoginSuccess: () {
             _handleManualInteraction(pause: true);
@@ -250,13 +258,13 @@ class _QuickServeDriverRootFlowState extends State<QuickServeDriverRootFlow> {
         return OtpVerificationLivenessScreen(
           onBackTap: () {
             _handleManualInteraction(pause: true);
+            _otpVerifiedForRegistration = false;
             _demoController.jumpToScreen(DemoScreen.loginRegister);
           },
-          onVerifySuccess: () async {
+          onVerifySuccess: () {
             _handleManualInteraction(pause: true);
-            await DriverBackendService.instance.saveSession();
-            _navigationHistory.clear();
-            _demoController.jumpToScreen(DemoScreen.driverHomeDashboard);
+            _otpVerifiedForRegistration = true;
+            _demoController.jumpToScreen(DemoScreen.loginRegister);
           },
         );
 

@@ -76,9 +76,9 @@ class AuthApiService {
     // Physical device â†’ backend via LAN/Atlas needs more time.
     // 12s is safe even on a slow connection and avoids silent fallback to mock data.
     if (base.contains('localhost') || base.contains('127.0.0.1') || base.contains('10.0.2.2')) {
-      return const Duration(seconds: 8);
+      return const Duration(seconds: 4);
     }
-    return const Duration(seconds: 12);
+    return const Duration(seconds: 7);
   }
 
   /// Send POST request â€” races ALL candidate URLs in parallel. First valid JSON
@@ -87,7 +87,6 @@ class AuthApiService {
     String endpoint,
     Map<String, dynamic> payload, {
     String? token,
-    int maxAttempts = 1,
   }) async {
     // If we already know the best URL, try it first with a short deadline
     final knownBase = ApiConfig.customBaseUrl;
@@ -99,7 +98,7 @@ class AuthApiService {
               headers: ApiConfig.getHeaders(token: token),
               body: jsonEncode(payload),
             )
-            .timeout(const Duration(seconds: 10));
+            .timeout(_timeoutForCandidate(knownBase));
         if (_tryParseJson(response.body) != null) return response;
       } catch (_) {
         // Known URL failed, fall through to full race
@@ -119,7 +118,7 @@ class AuthApiService {
             headers: ApiConfig.getHeaders(token: token),
             body: jsonEncode(payload),
           )
-          .timeout(const Duration(seconds: 12))
+          .timeout(_timeoutForCandidate(base))
           .then((response) {
             if (!completer.isCompleted &&
                 _tryParseJson(response.body) != null) {
@@ -156,7 +155,7 @@ class AuthApiService {
               Uri.parse('$knownBase$endpoint'),
               headers: ApiConfig.getHeaders(token: token),
             )
-            .timeout(const Duration(seconds: 10));
+            .timeout(_timeoutForCandidate(knownBase));
         if (_tryParseJson(response.body) != null) return response;
       } catch (_) {
         ApiConfig.customBaseUrl = null;
@@ -173,7 +172,7 @@ class AuthApiService {
             Uri.parse('$base$endpoint'),
             headers: ApiConfig.getHeaders(token: token),
           )
-          .timeout(const Duration(seconds: 12))
+          .timeout(_timeoutForCandidate(base))
           .then((response) {
             if (!completer.isCompleted &&
                 _tryParseJson(response.body) != null) {
@@ -210,7 +209,7 @@ class AuthApiService {
               headers: ApiConfig.getHeaders(token: token),
               body: jsonEncode(payload),
             )
-            .timeout(const Duration(seconds: 10));
+            .timeout(_timeoutForCandidate(knownBase));
         if (_tryParseJson(response.body) != null) return response;
       } catch (_) {
         ApiConfig.customBaseUrl = null;
@@ -228,7 +227,7 @@ class AuthApiService {
             headers: ApiConfig.getHeaders(token: token),
             body: jsonEncode(payload),
           )
-          .timeout(const Duration(seconds: 12))
+          .timeout(_timeoutForCandidate(base))
           .then((response) {
             if (!completer.isCompleted &&
                 _tryParseJson(response.body) != null) {
@@ -287,13 +286,16 @@ class AuthApiService {
       if (response.statusCode == 201 && data?['success'] == true) {
         final token = data?['data']?['token'] as String?;
         final driverData = data?['data']?['driver'] as Map<String, dynamic>?;
-
-        if (token != null) {
-          await _tokenStorage.saveSession(
-            accessToken: token,
-            driverProfile: driverData,
+        if (token == null || token.isEmpty || driverData == null) {
+          return AuthResult.failure(
+            message: 'Registration response did not include a driver session.',
+            statusCode: response.statusCode,
           );
         }
+        await _tokenStorage.saveSession(
+          accessToken: token,
+          driverProfile: driverData,
+        );
 
         return AuthResult.success(
           message: message,
@@ -309,38 +311,11 @@ class AuthApiService {
         statusCode: response.statusCode,
       );
     } on TimeoutException {
-      return AuthResult.success(
-        message: 'Mock Registration Successful (Server Unreachable)',
-        token: 'mock_jwt_token',
-        driver: {
-          'id': 'GR-10023',
-          'name': name.trim(),
-          'phone': phone.trim(),
-          'status': 'offline',
-        },
-      );
-    } on SocketException catch (e) {
-      return AuthResult.success(
-        message: 'Mock Registration Successful (Server Unreachable)',
-        token: 'mock_jwt_token',
-        driver: {
-          'id': 'GR-10023',
-          'name': name.trim(),
-          'phone': phone.trim(),
-          'status': 'offline',
-        },
-      );
-    } catch (e) {
-      return AuthResult.success(
-        message: 'Mock Registration Successful (Server Unreachable)',
-        token: 'mock_jwt_token',
-        driver: {
-          'id': 'GR-10023',
-          'name': name.trim(),
-          'phone': phone.trim(),
-          'status': 'offline',
-        },
-      );
+      return AuthResult.failure(message: 'Registration timed out. Please try again.');
+    } on SocketException catch (error) {
+      return AuthResult.failure(message: 'Cannot reach server: ${error.message}');
+    } catch (error) {
+      return AuthResult.failure(message: 'Registration failed: $error');
     }
   }
 
@@ -364,14 +339,16 @@ class AuthApiService {
       if (response.statusCode == 200 && data?['success'] == true) {
         final token = data?['data']?['token'] as String?;
         final driverData = data?['data']?['driver'] as Map<String, dynamic>?;
-
-        // Persist session locally
-        if (token != null) {
-          await _tokenStorage.saveSession(
-            accessToken: token,
-            driverProfile: driverData,
+        if (token == null || token.isEmpty || driverData == null) {
+          return AuthResult.failure(
+            message: 'Login response did not include a driver session.',
+            statusCode: response.statusCode,
           );
         }
+        await _tokenStorage.saveSession(
+          accessToken: token,
+          driverProfile: driverData,
+        );
 
         return AuthResult.success(
           message: message,
@@ -387,38 +364,11 @@ class AuthApiService {
         statusCode: response.statusCode,
       );
     } on TimeoutException {
-      return AuthResult.success(
-        message: 'Mock Login Successful (Server Unreachable)',
-        token: 'mock_jwt_token',
-        driver: {
-          'id': 'GR-10023',
-          'name': 'Demo Driver',
-          'email': email.trim().toLowerCase(),
-          'status': 'offline',
-        },
-      );
-    } on SocketException {
-      return AuthResult.success(
-        message: 'Mock Login Successful (Server Unreachable)',
-        token: 'mock_jwt_token',
-        driver: {
-          'id': 'GR-10023',
-          'name': 'Demo Driver',
-          'email': email.trim().toLowerCase(),
-          'status': 'offline',
-        },
-      );
-    } catch (e) {
-      return AuthResult.success(
-        message: 'Mock Login Successful (Server Unreachable)',
-        token: 'mock_jwt_token',
-        driver: {
-          'id': 'GR-10023',
-          'name': 'Demo Driver',
-          'email': email.trim().toLowerCase(),
-          'status': 'offline',
-        },
-      );
+      return AuthResult.failure(message: 'Login timed out. Please try again.');
+    } on SocketException catch (error) {
+      return AuthResult.failure(message: 'Cannot reach server: ${error.message}');
+    } catch (error) {
+      return AuthResult.failure(message: 'Login failed: $error');
     }
   }
 
@@ -770,4 +720,3 @@ class AuthApiService {
     }
   }
 }
-

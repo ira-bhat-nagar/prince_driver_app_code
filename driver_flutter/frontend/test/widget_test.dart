@@ -9,7 +9,7 @@ void main() {
 
     // Verify approved First Screen (GoRush Driver App Splash)
     expect(find.text('GoRush'), findsOneWidget);
-    expect(find.text('Driver App'), findsWidgets);
+    expect(find.text('Captain App'), findsWidgets);
     expect(find.text('Drive • Earn • Grow'), findsOneWidget);
     expect(find.text('Get Started'), findsOneWidget);
 
@@ -20,6 +20,6 @@ void main() {
 
     // Navigates to Create Account / Register screen
     expect(find.text('Create Your Account'), findsOneWidget);
-    expect(find.text('Register'), findsOneWidget);
+    expect(find.text('Get OTP'), findsOneWidget);
   });
 }

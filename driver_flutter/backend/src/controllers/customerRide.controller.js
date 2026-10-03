@@ -61,9 +61,6 @@ exports.createRide = async (req, res) => {
     otp: String(Math.floor(1000 + Math.random() * 9000)),
     fare: { total: quote.total, driverEarnings: quote.total, paymentMethod: req.body.paymentMethod || 'Cash / UPI' },
   });
-  if (req.app.locals.io) {
-    req.app.locals.io.to('drivers:online').emit('ride:offer', ride.toSafeObject());
-  }
   return res.status(201).json({
     rideId: ride.rideId,
     customerId: String(req.customer._id),

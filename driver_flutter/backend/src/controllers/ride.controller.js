@@ -2,6 +2,8 @@ const Ride = require('../models/ride.model');
 const Driver = require('../models/driver.model');
 const walletController = require('./wallet.controller');
 
+const rideOfferMaxAgeMs = 10 * 60 * 1000;
+
 function emitRide(req, event, ride) {
   const io = req.app.locals.io;
   if (!io || !ride) return;
@@ -52,16 +54,32 @@ exports.getAvailableRide = async (req, res) => {
       }
     }
 
-    // Each offer is reserved to one driver before it reaches the device.
-    // Previously every online driver saw the same unassigned request; after
-    // one acceptance all other phones kept a stale card and got HTTP 409.
-    let availableRide = driverId
-      ? await Ride.findOne({
-          status: 'requested',
-          driverId: null,
-          offeredToDriverId: driverId,
-        }).sort({ createdAt: -1 })
-      : null;
+    let availableRide = null;
+    if (driverId) {
+      const requestSince = new Date(Date.now() - rideOfferMaxAgeMs);
+      availableRide = await Ride.findOne({
+        status: 'requested',
+        driverId: null,
+        offeredToDriverId: driverId,
+        requestedAt: { $gte: requestSince },
+      }).sort({ createdAt: -1 });
+
+      // Claim a real customer request atomically for a single online driver.
+      // This lets the driver's short-poll fallback receive requests even if
+      // its Socket.IO connection was temporarily unavailable.
+      if (!availableRide) {
+        availableRide = await Ride.findOneAndUpdate(
+          {
+            status: 'requested',
+            driverId: null,
+            offeredToDriverId: null,
+            requestedAt: { $gte: requestSince },
+          },
+          { $set: { offeredToDriverId: driverId } },
+          { new: true, sort: { createdAt: 1 } }
+        );
+      }
+    }
 
     return res.status(200).json({
       success: true,

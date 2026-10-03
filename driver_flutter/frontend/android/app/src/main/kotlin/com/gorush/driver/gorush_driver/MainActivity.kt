@@ -1,12 +1,16 @@
 package com.gorush.driver.gorush_driver
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.pm.PackageManager
 import android.media.MediaPlayer
 import android.os.*
+import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -16,6 +20,7 @@ class MainActivity : FlutterActivity() {
     private var mediaPlayer: MediaPlayer? = null
     private var vibrator: Vibrator? = null
     private var _ringActive = false
+    private var notificationPermissionResult: MethodChannel.Result? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -24,6 +29,9 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "requestNotificationPermission" -> {
+                        requestNotificationPermission(result)
+                    }
                     "showNotification" -> {
                         val id = call.argument<Int>("id") ?: 0
                         val title = call.argument<String>("title") ?: "GoRush Driver"
@@ -43,6 +51,43 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    private fun requestNotificationPermission(result: MethodChannel.Result) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            result.success(true)
+            return
+        }
+
+        if (notificationPermissionResult != null) {
+            result.success(false)
+            return
+        }
+        notificationPermissionResult = result
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+            NOTIFICATION_PERMISSION_REQUEST
+        )
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == NOTIFICATION_PERMISSION_REQUEST) {
+            notificationPermissionResult?.success(
+                grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED
+            )
+            notificationPermissionResult = null
+        }
     }
 
     private fun playRideRing() {
@@ -132,5 +177,9 @@ class MainActivity : FlutterActivity() {
         try {
             NotificationManagerCompat.from(this).notify(id, builder.build())
         } catch (_: SecurityException) {}
+    }
+
+    companion object {
+        private const val NOTIFICATION_PERMISSION_REQUEST = 9142
     }
 }

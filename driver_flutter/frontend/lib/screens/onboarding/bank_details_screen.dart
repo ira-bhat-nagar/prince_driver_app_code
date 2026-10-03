@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 import '../../core/theme.dart';
 import '../../core/app_toast.dart';
 import '../../services/token_storage_service.dart';
-import '../../services/auth_api_service.dart';
 
 class BankDetailsScreen extends StatefulWidget {
   final VoidCallback? onNext;
@@ -40,8 +39,9 @@ class _BankDetailsScreenState extends State<BankDetailsScreen> {
     _bankNameCtrl = TextEditingController(
         text: savedBank?['bankName'] as String? ?? 'HDFC Bank Limited');
     _holderNameCtrl = TextEditingController(
-        text: savedBank?['accountHolderName'] as String? ??
-            (name.isNotEmpty ? name : 'Partner Driver'));
+        text: name.isNotEmpty
+            ? name
+            : (savedBank?['accountHolderName'] as String? ?? 'Partner Driver'));
     _accountNumberCtrl = TextEditingController(
         text: savedBank?['accountNumber'] as String? ?? '');
     _ifscCtrl =
@@ -89,13 +89,6 @@ class _BankDetailsScreenState extends State<BankDetailsScreen> {
         refreshToken: TokenStorageService.instance.refreshToken,
         driverProfile: profile,
       );
-
-      // Also try to save to backend
-      try {
-        await AuthApiService.instance.updateProfile(
-          name: _holderNameCtrl.text.trim(),
-        );
-      } catch (_) {}
 
       if (mounted) {
         setState(() {

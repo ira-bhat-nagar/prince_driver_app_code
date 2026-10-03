@@ -49,8 +49,12 @@ class _OtpVerificationLivenessScreenState
 
   @override
   void dispose() {
-    for (final c in _controllers) c.dispose();
-    for (final f in _focusNodes) f.dispose();
+    for (final c in _controllers) {
+      c.dispose();
+    }
+    for (final f in _focusNodes) {
+      f.dispose();
+    }
     _resendTimer?.cancel();
     _clipboardTimer?.cancel();
     super.dispose();
@@ -125,12 +129,8 @@ class _OtpVerificationLivenessScreenState
       return;
     }
     setState(() => _isVerifying = true);
-    Future.delayed(const Duration(milliseconds: 400), () {
-      if (mounted) {
-        setState(() => _isVerifying = false);
-        widget.onVerifySuccess?.call();
-      }
-    });
+    setState(() => _isVerifying = false);
+    widget.onVerifySuccess?.call();
   }
 
   @override

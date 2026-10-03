@@ -61,7 +61,7 @@ void main() {
       await tester.tap(find.text('Update Password'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 350));
-      expect(find.text('Please fill all required fields'), findsOneWidget);
+      expect(find.text('Please enter your current password'), findsOneWidget);
 
       // CASE 2: Enter only current password -> Error toast for new password
       await tester.enterText(textFields.at(0), 'CurrentPass123');
@@ -78,7 +78,7 @@ void main() {
       await tester.tap(find.text('Update Password'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 350));
-      expect(find.text('New passwords do not match'), findsOneWidget);
+      expect(find.text('Passwords do not match'), findsOneWidget);
 
       // Verify toggle visibility icons work independently
       final eyeIcons = find.byIcon(Icons.visibility_off_outlined);

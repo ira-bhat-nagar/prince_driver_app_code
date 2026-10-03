@@ -1,10 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../core/app_toast.dart';
 import '../../services/auth_api_service.dart';
-import '../../services/token_storage_service.dart';
-import '../../services/driver_backend_service.dart';
 
 // Global OTP session — shared between registration and OTP screens
 class OtpSession {
@@ -22,12 +19,16 @@ class DriverLoginRegistrationScreen extends StatefulWidget {
   final VoidCallback? onGetOtp;
   final VoidCallback? onBackTap;
   final VoidCallback? onLoginSuccess;
+  final VoidCallback? onRegistrationSuccess;
+  final bool otpVerified;
 
   const DriverLoginRegistrationScreen({
     super.key,
     this.onGetOtp,
     this.onBackTap,
     this.onLoginSuccess,
+    this.onRegistrationSuccess,
+    this.otpVerified = false,
   });
 
   @override
@@ -41,13 +42,10 @@ class _DriverLoginRegistrationScreenState
   bool _isRegisterMode = true;
   bool _isLoading = false;
 
-  // Controllers for all 6 reference fields
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  final TextEditingController _vehicleController = TextEditingController();
-  final TextEditingController _licenseController = TextEditingController();
   final TextEditingController _dateOfBirthController = TextEditingController();
 
   // Controllers for Login Mode
@@ -60,6 +58,9 @@ class _DriverLoginRegistrationScreenState
   @override
   void initState() {
     super.initState();
+    if (widget.otpVerified) {
+      _phoneController.text = OtpSession.phoneNumber;
+    }
     _loginEmailController.addListener(_onLoginEmailChanged);
   }
 
@@ -80,8 +81,6 @@ class _DriverLoginRegistrationScreenState
     _phoneController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
-    _vehicleController.dispose();
-    _licenseController.dispose();
     _dateOfBirthController.dispose();
     _loginEmailController.dispose();
     _loginPasswordController.dispose();
@@ -91,6 +90,11 @@ class _DriverLoginRegistrationScreenState
   Future<void> _handleRegister() async {
     if (_isLoading) return;
     FocusScope.of(context).unfocus();
+
+    if (widget.otpVerified) {
+      await _completeRegistration();
+      return;
+    }
 
     final phone = _phoneController.text.trim();
     final phoneDigits = phone.replaceAll(RegExp(r'[^0-9]'), '');
@@ -103,99 +107,11 @@ class _DriverLoginRegistrationScreenState
     setState(() => _isLoading = true);
 
     // Generate OTP locally (works without SMS gateway)
-    final otp = OtpSession.generate();
+    OtpSession.generate();
     OtpSession.phoneNumber = phoneDigits;
-
-    // Save phone locally
-    final localToken = 'session_${DateTime.now().millisecondsSinceEpoch}';
-    await TokenStorageService.instance.saveSession(
-      accessToken: localToken,
-      driverProfile: {'phone': phoneDigits, 'status': 'offline'},
-    );
 
     if (mounted) setState(() => _isLoading = false);
 
-    // Show OTP in a prominent dialog so user can see it
-    if (context.mounted) {
-      await showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Row(
-            children: [
-              Icon(Icons.sms_outlined, color: Color(0xFF1E5AE6)),
-              SizedBox(width: 8),
-              Text('OTP Sent!', style: TextStyle(fontWeight: FontWeight.bold)),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'OTP for +91 $phoneDigits',
-                style: const TextStyle(color: Color(0xFF64748B), fontSize: 13),
-              ),
-              const SizedBox(height: 16),
-              // Big OTP display
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFF1E5AE6).withOpacity(0.4)),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      otp,
-                      style: const TextStyle(
-                        fontSize: 34,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1E3A8A),
-                        letterSpacing: 8,
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.copy, color: Color(0xFF1E5AE6)),
-                      onPressed: () {
-                        Clipboard.setData(ClipboardData(text: otp));
-                        AppToast.success(ctx, 'OTP copied!');
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'This OTP will be auto-filled on the next screen.',
-                style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
-          actions: [
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1E5AE6),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                  padding: const EdgeInsets.symmetric(vertical: 13),
-                ),
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Proceed to Verify',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Navigate to OTP screen
     if (mounted) {
       if (widget.onGetOtp != null) {
         widget.onGetOtp!();
@@ -204,10 +120,56 @@ class _DriverLoginRegistrationScreenState
       }
     }
 
-    // Try backend OTP in background — silent
     AuthApiService.instance
         .sendOtp(phone: phoneDigits)
         .catchError((e) => debugPrint('[OTP] Send: $e'));
+  }
+
+  Future<void> _completeRegistration() async {
+    final name = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    final dob = _dateOfBirthController.text.trim();
+    if (name.isEmpty || email.isEmpty || password.isEmpty || dob.isEmpty) {
+      AppToast.error(context, 'Please complete all required account details');
+      return;
+    }
+    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
+      AppToast.error(context, 'Please enter a valid email address');
+      return;
+    }
+    if (password.length < 4) {
+      AppToast.error(context, 'Password must be at least 4 characters');
+      return;
+    }
+    final dateOfBirth = DateTime.tryParse(dob);
+    if (dateOfBirth == null || !_isAtLeast18(dateOfBirth)) {
+      AppToast.error(context, 'Driver must be at least 18 years old');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      final result = await AuthApiService.instance.register(
+        name: name,
+        phone: OtpSession.phoneNumber,
+        email: email,
+        password: password,
+        dateOfBirth: dateOfBirth.toIso8601String(),
+      );
+      if (!result.success || result.token == null || result.driver == null) {
+        throw Exception(result.message.isNotEmpty
+            ? result.message
+            : 'Unable to create your account. Please try again.');
+      }
+      if (!mounted) return;
+      OtpSession.generatedOtp = '';
+      widget.onRegistrationSuccess?.call();
+    } catch (error) {
+      if (mounted) AppToast.error(context, error.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _handleLogin() async {
@@ -234,18 +196,7 @@ class _DriverLoginRegistrationScreenState
         password: password,
       );
 
-      if (result.success) {
-        final effectiveToken =
-            result.token ?? 'session_${DateTime.now().millisecondsSinceEpoch}';
-        await TokenStorageService.instance.saveSession(
-          accessToken: effectiveToken,
-          driverProfile: result.driver,
-        );
-        await DriverBackendService.instance.saveSession(
-          accessToken: effectiveToken,
-          driverProfile: result.driver,
-        );
-
+      if (result.success && result.token != null) {
         if (mounted) {
           AppToast.success(context,
               result.message.isNotEmpty ? result.message : 'Login successful!');
@@ -257,7 +208,11 @@ class _DriverLoginRegistrationScreenState
         }
       } else if (mounted) {
         AppToast.error(context,
-            result.message.isNotEmpty ? result.message : 'Invalid credentials');
+            result.success
+                ? 'Login response did not include a session token.'
+                : (result.message.isNotEmpty
+                    ? result.message
+                    : 'Invalid credentials'));
       }
     } catch (e) {
       if (mounted) {
@@ -427,7 +382,9 @@ class _DriverLoginRegistrationScreenState
                             ),
                           )
                         : Text(
-                            _isRegisterMode ? 'Get OTP' : 'Login',
+                            _isRegisterMode
+                                ? (widget.otpVerified ? 'Register' : 'Get OTP')
+                                : 'Login',
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -441,7 +398,7 @@ class _DriverLoginRegistrationScreenState
               const SizedBox(height: 12),
 
               // 5. Toggle between Register and Login
-              Center(
+              if (!widget.otpVerified) Center(
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -494,6 +451,42 @@ class _DriverLoginRegistrationScreenState
   }
 
   Widget _buildRegisterFields() {
+    if (widget.otpVerified) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildInputField(
+            controller: _nameController,
+            hintText: 'Full Name',
+            icon: Icons.person_outline,
+          ),
+          const SizedBox(height: 8),
+          _buildDateOfBirthField(),
+          const SizedBox(height: 8),
+          _buildInputField(
+            controller: _phoneController,
+            hintText: 'Mobile Number',
+            icon: Icons.phone_android_outlined,
+            keyboardType: TextInputType.phone,
+            readOnly: true,
+          ),
+          const SizedBox(height: 8),
+          _buildInputField(
+            controller: _emailController,
+            hintText: 'Email Address',
+            icon: Icons.email_outlined,
+            keyboardType: TextInputType.emailAddress,
+          ),
+          const SizedBox(height: 8),
+          _buildInputField(
+            controller: _passwordController,
+            hintText: 'Create Password',
+            icon: Icons.lock_outline,
+            obscureText: true,
+          ),
+        ],
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -611,6 +604,7 @@ class _DriverLoginRegistrationScreenState
     required String hintText,
     required IconData icon,
     bool obscureText = false,
+    bool readOnly = false,
     TextInputType keyboardType = TextInputType.text,
     TextInputAction textInputAction = TextInputAction.next,
   }) {
@@ -629,6 +623,7 @@ class _DriverLoginRegistrationScreenState
             child: TextField(
               controller: controller,
               obscureText: obscureText,
+              readOnly: readOnly,
               keyboardType: keyboardType,
               textInputAction: textInputAction,
               style: const TextStyle(
