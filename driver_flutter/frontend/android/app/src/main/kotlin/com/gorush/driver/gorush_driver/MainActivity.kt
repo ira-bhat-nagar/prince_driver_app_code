@@ -3,7 +3,9 @@ package com.gorush.driver.gorush_driver
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.MediaPlayer
 import android.os.*
@@ -168,12 +170,25 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun showNotification(id: Int, title: String, body: String, channelId: String) {
+        // Tap on notification brings the app to foreground (dialog is already visible)
+        val launchIntent = Intent(this, MainActivity::class.java).apply {
+            action = Intent.ACTION_MAIN
+            addCategory(Intent.CATEGORY_LAUNCHER)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val pendingFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        else PendingIntent.FLAG_UPDATE_CURRENT
+        val contentIntent = PendingIntent.getActivity(this, id, launchIntent, pendingFlags)
+
         val builder = NotificationCompat.Builder(this, channelId)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle(title)
             .setContentText(body)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
+            .setContentIntent(contentIntent) // tap → open app → see dialog
+
         try {
             NotificationManagerCompat.from(this).notify(id, builder.build())
         } catch (_: SecurityException) {}

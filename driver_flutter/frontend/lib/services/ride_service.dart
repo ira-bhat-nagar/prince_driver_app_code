@@ -327,7 +327,9 @@ class RideService extends ChangeNotifier {
 
     if (rideId == 'default_ride_sample' ||
         rideId == 'GR-108709' ||
-        rideId == 'mock_ride_123') {
+        rideId == 'mock_ride_123' ||
+        rideId.startsWith('RIDE_DEMO_')) {
+      // Demo / mock ride — accept locally without any API call
       _activeRide = offer?.copyWith(status: 'accepted') ??
           RideModel.defaultSample().copyWith(status: 'accepted');
       _availableRide = null;
