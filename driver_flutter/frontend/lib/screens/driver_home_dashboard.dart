@@ -66,6 +66,8 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
     TokenStorageService.instance.addListener(_onProfileChanged);
     RideService.instance.addListener(_onRideServiceChanged);
     WalletService.instance.addListener(_onWalletChanged);
+    // Handle Accept/Reject tapped on Android notification
+    NotificationService.instance.onRideAction = _handleNotificationRideAction;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       RideService.instance.init();
       WalletService.instance.fetchWallet();
@@ -80,6 +82,7 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
 
   @override
   void dispose() {
+    NotificationService.instance.onRideAction = null; // clear to avoid leaks
     TokenStorageService.instance.removeListener(_onProfileChanged);
     RideService.instance.removeListener(_onRideServiceChanged);
     WalletService.instance.removeListener(_onWalletChanged);
@@ -106,6 +109,36 @@ class _DriverHomeDashboardScreenState extends State<DriverHomeDashboardScreen> {
 
   void _onWalletChanged() {
     if (mounted) setState(() {});
+  }
+
+  /// Called when user taps ✅ Accept or ❌ Reject on the system notification.
+  void _handleNotificationRideAction(String action) {
+    if (!mounted) return;
+    // Dismiss the notification
+    unawaited(NotificationService.instance.dismissRideNotification());
+    unawaited(NotificationService.instance.stopRideRing());
+
+    if (action == 'accept') {
+      // Accept the demo ride — navigate to trip screen
+      final activeRide = RideService.instance.activeRide;
+      if (activeRide != null) {
+        widget.onIncomingRequestTap?.call();
+        return;
+      }
+      // Force-accept demo ride locally if dialog was still pending
+      final available = RideService.instance.availableRide;
+      if (available != null && available.rideId.startsWith('RIDE_DEMO_')) {
+        unawaited(RideService.instance.acceptRide(available.rideId, offer: available));
+      }
+      widget.onIncomingRequestTap?.call();
+    } else if (action == 'reject') {
+      // Just close any open dialog and show info toast
+      if (mounted) {
+        Navigator.of(context).popUntil((route) =>
+            route.isFirst || route.settings.name == '/dashboard');
+        AppToast.info(context, 'Ride declined from notification.');
+      }
+    }
   }
 
   Future<void> _setOnlineStatus(bool online) async {

@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../core/app_toast.dart';
 import '../core/theme.dart';
 import '../models/insurance_models.dart';
@@ -869,9 +869,8 @@ class _InsuranceScreenState extends State<InsuranceScreen>
             actions: [
               TextButton(
                 onPressed: submitting ? null : () {
+                  // DON'T dispose controllers here — causes black screen during dialog close animation
                   Navigator.pop(dialogContext);
-                  typeController.dispose(); rideController.dispose();
-                  locationController.dispose(); descriptionController.dispose();
                 },
                 child: const Text('Cancel')),
               ElevatedButton(
@@ -897,8 +896,7 @@ class _InsuranceScreenState extends State<InsuranceScreen>
                     setState(() => _claims = [localClaim, ..._claims]);
                     AppToast.success(context, 'Claim submitted! ID: $claimId');
                   }
-                  typeController.dispose(); rideController.dispose();
-                  locationController.dispose(); descriptionController.dispose();
+                  // Don't dispose here — Flutter handles GC
                   InsuranceService.instance.submitClaim({
                     'claimType': claimType, 'rideId': rideId,
                     'incidentLocation': location, 'description': description,

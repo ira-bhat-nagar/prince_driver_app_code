@@ -7,12 +7,27 @@ import '../models/ride_model.dart';
 class NotificationService {
   static final NotificationService instance = NotificationService._internal();
   factory NotificationService() => instance;
-  NotificationService._internal();
+  NotificationService._internal() {
+    // Listen for incoming Native → Flutter method calls (e.g. notification actions)
+    _channel.setMethodCallHandler(_handleNativeCall);
+  }
 
   static const _channel = MethodChannel('com.gorush.driver/notifications');
 
   static const int _onlineNotifId = 1001;
   static const int _offlineNotifId = 1002;
+
+  /// Callback triggered when user taps Accept/Reject on a notification.
+  /// Set this from the dashboard screen.
+  void Function(String action)? onRideAction;
+
+  Future<dynamic> _handleNativeCall(MethodCall call) async {
+    if (call.method == 'rideAction') {
+      final action = call.arguments as String? ?? '';
+      debugPrint('[NotificationService] rideAction from notification: $action');
+      onRideAction?.call(action);
+    }
+  }
 
   Future<bool> requestPermission() async {
     try {
@@ -35,8 +50,8 @@ class NotificationService {
       await _channel.invokeMethod('showNotification', {
         'id': isOnline ? _onlineNotifId : _offlineNotifId,
         'title': isOnline
-            ? '🟢 GoRush Driver – You are Online'
-            : '🔴 GoRush Driver – You are Offline',
+            ? '🟢 GoRush Captain – You are Online'
+            : '🔴 GoRush Captain – You are Offline',
         'body': isOnline
             ? 'Looking for ride requests. Keep the app open to receive requests.'
             : 'You will not receive new ride requests while offline.',
@@ -52,21 +67,22 @@ class NotificationService {
     }
   }
 
-  /// Show a heads-up notification for a new ride request.
+  /// Show a heads-up notification for a new ride request WITH Accept/Reject actions.
   Future<void> showNewRideRequestNotification(RideModel ride) async {
     try {
       if (!await requestPermission()) return;
-      await _channel.invokeMethod('showNotification', {
+      await _channel.invokeMethod('showRideNotification', {
         'id': 2001,
-        'title': 'New ride request — ${ride.passengerName}',
+        'title': '🚗 New Ride — ${ride.passengerName}',
         'body':
-            'Pickup: ${ride.pickupAddress}. Fare ₹${ride.totalFare.toStringAsFixed(0)}. Tap to view.',
+            'Pickup: ${ride.pickupAddress}. Fare ₹${ride.totalFare.toStringAsFixed(0)}. Accept in 30s!',
         'channelId': 'gorush_driver_status',
-        'channelName': 'Driver Status Alerts',
-        'importance': 4,
+        'passengerName': ride.passengerName,
+        'fare': ride.totalFare.toStringAsFixed(0),
+        'pickup': ride.pickupArea,
       });
     } on PlatformException catch (e) {
-      debugPrint('[NotificationService] showNotification error: $e');
+      debugPrint('[NotificationService] showRideNotification error: $e');
     } on MissingPluginException {
       debugPrint(
           '[NotificationService] Platform channel not available — notification skipped.');
@@ -89,6 +105,13 @@ class NotificationService {
   Future<void> stopRideRing() async {
     try {
       await _channel.invokeMethod('stopRideRing');
+    } catch (_) {}
+  }
+
+  /// Dismiss the ride request notification.
+  Future<void> dismissRideNotification() async {
+    try {
+      await _channel.invokeMethod('dismissNotification', {'id': 2001});
     } catch (_) {}
   }
 }
