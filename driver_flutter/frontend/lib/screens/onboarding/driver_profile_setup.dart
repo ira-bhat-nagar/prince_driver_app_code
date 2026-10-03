@@ -37,6 +37,10 @@ class _DriverProfileSetupScreenState extends State<DriverProfileSetupScreen> {
   late final TextEditingController _dobController;
   late final TextEditingController _cityController;
   late final TextEditingController _addressController;
+  late final TextEditingController _passwordController;
+  late final TextEditingController _confirmPasswordController;
+  bool _showPassword = false;
+  bool _showConfirmPassword = false;
 
   final ImagePicker _imagePicker = ImagePicker();
 
@@ -51,12 +55,17 @@ class _DriverProfileSetupScreenState extends State<DriverProfileSetupScreen> {
     super.initState();
     final savedProfile = TokenStorageService.instance.driverProfile ??
         DriverBackendService.instance.driverProfile;
-    final defaultName = (savedProfile?['name'] as String?)?.trim() ?? '';
+    // Name & email: auto-fill ONLY when editing (not for new registration)
+    final defaultName = widget.isEditing
+        ? ((savedProfile?['name'] as String?)?.trim() ?? '')
+        : '';
     // Auto-fill phone from OTP session (registration number)
     final sessionPhone = OtpSession.phoneNumber.isNotEmpty
         ? OtpSession.phoneNumber
         : (savedProfile?['phone'] as String?)?.trim() ?? '';
-    final defaultEmail = (savedProfile?['email'] as String?)?.trim() ?? '';
+    final defaultEmail = widget.isEditing
+        ? ((savedProfile?['email'] as String?)?.trim() ?? '')
+        : '';
     final defaultCity =
         (savedProfile?['city'] as String?)?.trim() ?? 'Noida & Delhi NCR';
     final defaultAddress = (savedProfile?['address'] as String?)?.trim() ??
@@ -68,6 +77,8 @@ class _DriverProfileSetupScreenState extends State<DriverProfileSetupScreen> {
     _dobController = TextEditingController(text: '12-05-1995');
     _cityController = TextEditingController(text: defaultCity);
     _addressController = TextEditingController(text: defaultAddress);
+    _passwordController = TextEditingController();
+    _confirmPasswordController = TextEditingController();
     final savedPhoto = savedProfile?['profileImage'] as String?;
     if (savedPhoto != null &&
         savedPhoto.isNotEmpty &&
@@ -90,15 +101,18 @@ class _DriverProfileSetupScreenState extends State<DriverProfileSetupScreen> {
     final p = TokenStorageService.instance.driverProfile ??
         DriverBackendService.instance.driverProfile;
     if (p == null) return;
-    final n = (p['name'] as String?)?.trim();
     final ph = (p['phone'] as String?)?.trim();
-    final em = (p['email'] as String?)?.trim();
     final c = (p['city'] as String?)?.trim();
     final a = (p['address'] as String?)?.trim();
 
-    if (n != null && n.isNotEmpty) _nameController.text = n;
+    // Only auto-fill name/email when EDITING (not during new registration)
+    if (widget.isEditing) {
+      final n = (p['name'] as String?)?.trim();
+      final em = (p['email'] as String?)?.trim();
+      if (n != null && n.isNotEmpty) _nameController.text = n;
+      if (em != null && em.isNotEmpty) _emailController.text = em;
+    }
     if (ph != null && ph.isNotEmpty) _phoneController.text = ph;
-    if (em != null && em.isNotEmpty) _emailController.text = em;
     if (c != null && c.isNotEmpty) _cityController.text = c;
     if (a != null && a.isNotEmpty) _addressController.text = a;
     setState(() {});
@@ -138,6 +152,8 @@ class _DriverProfileSetupScreenState extends State<DriverProfileSetupScreen> {
     _dobController.dispose();
     _cityController.dispose();
     _addressController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -558,6 +574,29 @@ class _DriverProfileSetupScreenState extends State<DriverProfileSetupScreen> {
                 keyboardType: TextInputType.emailAddress,
               ),
               const SizedBox(height: 8),
+              // Password fields — optional; fill only to set/change password
+              _buildField(
+                tr('Create Password'),
+                _passwordController,
+                prefixIcon: Icons.lock_outline,
+                obscureText: !_showPassword,
+                suffixIcon: IconButton(
+                  icon: Icon(_showPassword ? Icons.visibility_off : Icons.visibility, size: 20),
+                  onPressed: () => setState(() => _showPassword = !_showPassword),
+                ),
+              ),
+              const SizedBox(height: 8),
+              _buildField(
+                tr('Confirm Password'),
+                _confirmPasswordController,
+                prefixIcon: Icons.lock_outline,
+                obscureText: !_showConfirmPassword,
+                suffixIcon: IconButton(
+                  icon: Icon(_showConfirmPassword ? Icons.visibility_off : Icons.visibility, size: 20),
+                  onPressed: () => setState(() => _showConfirmPassword = !_showConfirmPassword),
+                ),
+              ),
+              const SizedBox(height: 8),
               _buildField(
                 tr('Date of Birth'),
                 _dobController,
@@ -637,9 +676,22 @@ class _DriverProfileSetupScreenState extends State<DriverProfileSetupScreen> {
                     final email = _emailController.text.trim();
                     final city = _cityController.text.trim();
                     final address = _addressController.text.trim();
+                    final password = _passwordController.text;
+                    final confirmPassword = _confirmPasswordController.text;
                     if (name.isEmpty) {
                       AppToast.error(context, tr('Please enter your full name'));
                       return;
+                    }
+                    // Validate passwords if user filled them
+                    if (password.isNotEmpty) {
+                      if (password.length < 4) {
+                        AppToast.error(context, 'Password must be at least 4 characters');
+                        return;
+                      }
+                      if (password != confirmPassword) {
+                        AppToast.error(context, 'Passwords do not match');
+                        return;
+                      }
                     }
                     // Update the in-memory profile synchronously, persist in the
                     // background, and let onboarding continue without waiting
@@ -705,6 +757,8 @@ class _DriverProfileSetupScreenState extends State<DriverProfileSetupScreen> {
     required IconData prefixIcon,
     bool isDateOfBirth = false,
     bool readOnly = false,
+    bool obscureText = false,
+    Widget? suffixIcon,
     VoidCallback? onTap,
     TextInputType? keyboardType,
   }) {
@@ -749,6 +803,7 @@ class _DriverProfileSetupScreenState extends State<DriverProfileSetupScreen> {
                           controller: controller,
                           keyboardType: keyboardType,
                           readOnly: readOnly,
+                          obscureText: obscureText,
                           style: TextStyle(
                             color: readOnly
                                 ? QuickServeColors.textSecondary
@@ -769,7 +824,9 @@ class _DriverProfileSetupScreenState extends State<DriverProfileSetupScreen> {
                           ),
                         ),
                 ),
-                if (isDateOfBirth)
+                if (suffixIcon != null)
+                  suffixIcon
+                else if (isDateOfBirth)
                   IconButton(
                     icon: const Icon(Icons.calendar_month_rounded,
                         color: QuickServeColors.primaryOrange, size: 20),

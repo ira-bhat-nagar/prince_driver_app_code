@@ -68,6 +68,9 @@ void _showRecoverableError(Object error) {
       msg.contains('fetchavailableride') ||
       msg.contains('isOnline') ||
       msg.contains('formatexception') ||
+      msg.contains('insurance') ||
+      msg.contains('claim') ||
+      msg.contains('Insurance request failed') ||
       msg.contains('jsonunsupportedobjecterror');
   if (isNetworkError) {
     debugPrint('[Suppressed error]: $error');

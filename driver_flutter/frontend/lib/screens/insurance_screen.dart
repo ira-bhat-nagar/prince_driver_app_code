@@ -62,7 +62,11 @@ class _InsuranceScreenState extends State<InsuranceScreen>
       if (mounted) {
         setState(() {
           _policy = results[0] as InsurancePolicy?;
-          _claims = results[1] as List<InsuranceClaim>;
+          // Merge API claims with locally-added claims (keep both)
+          final apiClaims = results[1] as List<InsuranceClaim>;
+          final localIds = apiClaims.map((c) => c.id).toSet();
+          final localOnly = _claims.where((c) => !localIds.contains(c.id)).toList();
+          _claims = [...localOnly, ...apiClaims];
         });
       }
     } catch (_) {}
@@ -896,12 +900,18 @@ class _InsuranceScreenState extends State<InsuranceScreen>
                     setState(() => _claims = [localClaim, ..._claims]);
                     AppToast.success(context, 'Claim submitted! ID: $claimId');
                   }
-                  // Don't dispose here — Flutter handles GC
-                  InsuranceService.instance.submitClaim({
-                    'claimType': claimType, 'rideId': rideId,
-                    'incidentLocation': location, 'description': description,
-                    'incidentDate': now.toIso8601String(), 'incidentTime': incidentTime,
-                  }).catchError((e) { debugPrint('Claim sync: $e'); });
+                  // Background sync — using async lambda to avoid type mismatch in catchError
+                  () async {
+                    try {
+                      await InsuranceService.instance.submitClaim({
+                        'claimType': claimType, 'rideId': rideId,
+                        'incidentLocation': location, 'description': description,
+                        'incidentDate': now.toIso8601String(), 'incidentTime': incidentTime,
+                      });
+                    } catch (e) {
+                      debugPrint('Claim sync: $e');
+                    }
+                  }();
                 },
                 child: const Text('Submit Claim'),
               ),

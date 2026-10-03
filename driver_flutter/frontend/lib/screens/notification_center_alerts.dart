@@ -65,6 +65,7 @@ class _NotificationItemModel {
 class _NotificationCenterAlertsScreenState
     extends State<NotificationCenterAlertsScreen> {
   int _selectedCategory = 0; // 0: All, 1: Payments, 2: Trips, 3: Alerts
+  String? _lastAutoShownRideId; // avoid double-showing dialog
 
   late List<_NotificationItemModel> _notifications;
 
@@ -72,18 +73,34 @@ class _NotificationCenterAlertsScreenState
   void initState() {
     super.initState();
     _initNotifications();
-    RideService.instance.addListener(_refreshRideNotifications);
+    RideService.instance.addListener(_onRideChanged);
+    // If ride already available when screen opens — show dialog immediately
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ride = RideService.instance.availableRide;
+      if (ride != null && mounted) _maybeShowRideDialog(ride);
+    });
   }
 
   @override
   void dispose() {
-    RideService.instance.removeListener(_refreshRideNotifications);
+    RideService.instance.removeListener(_onRideChanged);
     super.dispose();
   }
 
-  void _refreshRideNotifications() {
+  void _onRideChanged() {
     if (!mounted) return;
     setState(_initNotifications);
+    // Auto-show dialog when new ride arrives while user is on this screen
+    final ride = RideService.instance.availableRide;
+    if (ride != null) _maybeShowRideDialog(ride);
+  }
+
+  void _maybeShowRideDialog(RideModel ride) {
+    if (_lastAutoShownRideId == ride.rideId) return; // already shown
+    _lastAutoShownRideId = ride.rideId;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _showRideAlertDialog(ride);
+    });
   }
 
   void _initNotifications() {
