@@ -263,8 +263,13 @@ class _QuickServeDriverRootFlowState extends State<QuickServeDriverRootFlow> {
           },
           onVerifySuccess: () {
             _handleManualInteraction(pause: true);
-            _otpVerifiedForRegistration = true;
-            _demoController.jumpToScreen(DemoScreen.loginRegister);
+            _otpVerifiedForRegistration = false;
+            // Save session in background — no blocking
+            DriverBackendService.instance.saveSession().catchError((_) {});
+            _navigationHistory.clear();
+            // Skip registration form — go directly to profile setup
+            // (phone is auto-filled from OtpSession.phoneNumber)
+            _demoController.jumpToScreen(DemoScreen.driverProfileSetup);
           },
         );
 
